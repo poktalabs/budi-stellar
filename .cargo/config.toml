@@ -1,0 +1,4 @@
+# Rust 1.90+ links x86_64 Linux with its bundled rust-lld, which crashed on
+# the Tenki build VM. Use the system linker (build-essential) instead.
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "linker-features=-lld"]
