@@ -32,5 +32,5 @@ Rust 1.91.0 no compila contratos (Stellar CLI lo bloquea), por eso el repo fija 
 - [x] Repo público
 - [x] Contrato Soroban de ejemplo con pruebas (`contracts/bitacora`)
 - [x] Imagen de Tenki con Rust, `wasm32v1-none`, Stellar CLI y VS Code en el navegador (`tenki/recipe.ts`), publicada como `dnai/budi-stellar-dev:main`
-- [ ] Lanzador: abre una sesión, clona tu repo, compila y prueba tus contratos
+- [x] Lanzador: abre una sesión, clona tu repo, compila y prueba tus contratos, abre VS Code en el navegador y despliega a testnet (`tenki/launch.ts`)
 - [ ] Integración con la app de Budi
