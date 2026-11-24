@@ -13,6 +13,10 @@ Budi como la plataforma para aprender a construir en Stellar. Hoy los recursos e
 3. **Tu agente Budi como guía**: te acompaña de la primera lección a desplegar tu primer contrato en testnet, y te conecta con lo que sigue (Stellar Quest, Stellar Community Fund, Stellar APEX).
 4. **Un demo de dos minutos** con el recorrido completo: explicador, workspace y contrato en testnet.
 
+## Cómo se conecta Budi
+
+Budi para Stellar es el primer cliente de la plataforma de Budi. Este repo es abierto (licencia MIT) y tiene lo que cualquiera puede correr: el contrato de ejemplo, la imagen de Tenki y el lanzador. Lo que hace especial a Budi, el motor de explicadores y la extensión, se queda en Budi y llega aquí por sus skills, su servidor MCP y su API. Este repo solo guarda la forma de conectarse, nunca su código.
+
 ## Cómo funciona
 
 1. **La imagen** (`tenki/recipe.ts`): Ubuntu con Rust 1.92 y el target `wasm32v1-none`, Stellar CLI 30 y VS Code en el navegador (code-server). Trae este repo adentro, ya compilado una vez, así que tu primera compilación es rápida. Está publicada como imagen pública de Tenki: `dnai/budi-stellar-dev:main`.
@@ -75,5 +79,6 @@ Imprime el `BUDI_STELLAR_IMAGE` nuevo para tu `.env`.
 - [x] Contrato Soroban de ejemplo con pruebas (`contracts/bitacora`)
 - [x] Imagen de Tenki con Rust, Stellar CLI y VS Code en el navegador
 - [x] Lanzador: sesión, tu repo, pruebas, VS Code y despliegue a testnet
-- [ ] Integración con la app de Budi: un botón «Abrir mi entorno Stellar» que llama a `openWorkspace` desde la API de Budi
-- [ ] El agente Budi dentro de la sesión, para que te ayude a escribir y probar contratos
+- [ ] Explicadores de Stellar hechos con el motor de Budi, servidos por su API (Budi los genera; este repo los enlaza)
+- [ ] El agente Budi dentro de la sesión por MCP y skills, para que te ayude a escribir y probar contratos
+- [ ] Integración con la app de Budi: un botón «Abrir mi entorno Stellar» que llama a `openWorkspace`

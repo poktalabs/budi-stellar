@@ -8,4 +8,6 @@ Context for any agent (Claude Code, Devin, Codex, Cursor) working in this repo.
 - Every live Tenki run is bounded: sessions have `maxDurationMs`, and `--check` runs always close their session.
 - Keep `RUST_VERSION` in `tenki/recipe.ts` in step with `rust-toolchain.toml`. Rebuild the image (`pnpm image:build`) after changing the starter or the recipe, then update `.env.example`.
 - The Budi app lives in the private `poktalabs/budi` repo; changes there go through a PR Mel approves.
+- **Budi's core stays private.** Never copy Budi's explainer engine, the Budi extension, or any other code from Budi's private repos into this repo. Budi para Stellar is the first client of Budi's platform: it reaches explainers and the extension only through Budi's skills, MCP server and API, and this repo holds pointers to them (URLs, skill names, API routes), never their source.
+- Content made by Budi's engines (explainer pages, narrated videos) lives on Budi's side and is linked from here; generated output is not committed here unless Mel says so.
 - No em-dashes in written output. Prose in `.md` files is one continuous line per paragraph.
