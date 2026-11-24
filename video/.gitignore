@@ -1,2 +1,4 @@
 node_modules/
 out/
+# The Sage launch bed is not ours to redistribute; copy it from sage-launch-video/public/music.
+public/music/
