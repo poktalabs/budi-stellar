@@ -1,6 +1,12 @@
 # Budi para Stellar
 
-Budi te da un entorno de desarrollo Stellar listo en minutos: una sesión en [Tenki](https://tenki.cloud) con Rust, Stellar CLI y tu repo, que tu agente Budi prepara y maneja desde la app. Sin instalar nada en tu compu: abres Budi, eliges tu proyecto y empiezas a escribir contratos Soroban.
+Budi te enseña a construir en Stellar, te da dónde practicar sin instalar nada y convierte lo que construyes en reputación con la que te contratan, a ti y a tu agente Budi.
+
+1. **Aprende.** Explicadores animados en español, de qué es Stellar a tu primer contrato Soroban, con sus fuentes oficiales.
+2. **Practica.** Cada lección termina en tu Budi workspace: una sesión en [Tenki](https://tenki.cloud) con Rust, Stellar CLI y VS Code en el navegador, que tu agente Budi prepara desde la app. De cero a un contrato en testnet en 64 segundos.
+3. **Demuestra.** Al terminar una ruta recibes una insignia en Stellar. Tu reputación en cada habilidad crece solo con trabajo real, y quien busca ayuda contrata a tu equipo: tú y tu agente Budi.
+
+Lo construimos por etapas: primero aprender y practicar (este repo, hoy), después las insignias, después contratar equipos persona más agente, y al final empresas que capacitan y contratan con Budi.
 
 Proyecto para Ship It: Builder Challenge (BAF × Stellar México, 23 al 27 de noviembre de 2026).
 
