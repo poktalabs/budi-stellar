@@ -8,10 +8,29 @@ Proyecto para Ship It: Builder Challenge (BAF × Stellar México, 23 al 27 de no
 
 En construcción. Ver la sección de avance abajo.
 
+## El contrato de ejemplo: Bitácora
+
+Cada builder registra sus hitos onchain. Es el contrato que Budi abre en cada sesión nueva: corto, pero con autorización, almacenamiento persistente, errores propios y eventos, para que el entorno pruebe el ciclo completo desde el primer minuto.
+
+| Función | Qué hace |
+| --- | --- |
+| `registrar(builder, hito)` | Guarda un hito (máximo 140 bytes). Solo firma el propio builder. Regresa el número del hito. |
+| `hitos(builder)` | Todos los hitos del builder, en orden. |
+| `contar(builder)` | Cuántos hitos lleva. |
+
+Para compilarlo y probarlo en tu compu (Rust se fija solo con `rust-toolchain.toml`; necesitas [Stellar CLI](https://developers.stellar.org/docs/tools/cli) 30 o más):
+
+```bash
+cargo test
+stellar contract build
+```
+
+Rust 1.91.0 no compila contratos (Stellar CLI lo bloquea), por eso el repo fija 1.92.0.
+
 ## Avance
 
 - [x] Repo público
-- [ ] Contrato Soroban de ejemplo con pruebas
+- [x] Contrato Soroban de ejemplo con pruebas (`contracts/bitacora`)
 - [ ] Imagen de Tenki con Rust, `wasm32v1-none` y Stellar CLI
 - [ ] Lanzador: abre una sesión, clona tu repo, compila y prueba tus contratos
 - [ ] Integración con la app de Budi
