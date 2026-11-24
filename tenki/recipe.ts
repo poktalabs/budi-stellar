@@ -25,8 +25,9 @@ export function recipe(ref: string): TemplateSpec {
     .fromImage("sandbox")
     .withGitContext({ repo: REPO, ref, checkout: { dest: LAYOUT.starter, mode: "contents" } })
     .workdir(LAYOUT.starter)
-    // Rust links need room; the default build VM is small.
-    .resources({ cpuCores: 4, memoryMb: 8192, diskSizeGb: 20 })
+    // These are also the floor for every session booted from the image, so
+    // stay inside Tenki's free tier (2 vCPU / 4 GiB) or free accounts can't launch.
+    .resources({ cpuCores: 2, memoryMb: 4096, diskSizeGb: 20 })
     .apt(["build-essential", "pkg-config", "curl", "git", "ca-certificates", "jq"])
     .run(
       `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain ${RUST_VERSION} --target wasm32v1-none --component rustfmt,clippy`,
