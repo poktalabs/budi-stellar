@@ -82,3 +82,7 @@ Imprime el `BUDI_STELLAR_IMAGE` nuevo para tu `.env`.
 - [ ] Explicadores de Stellar hechos con el motor de Budi, servidos por su API (Budi los genera; este repo los enlaza)
 - [ ] El agente Budi dentro de la sesión por MCP y skills, para que te ayude a escribir y probar contratos
 - [ ] Integración con la app de Budi: un botón «Abrir mi entorno Stellar» que llama a `openWorkspace`
+
+## Licencia y marca
+
+El código es abierto bajo la [licencia MIT](LICENSE). La marca Budi (nombre, logo, personaje, voz y videos) no es open source: es de Poktalabs y no está en este repo. Detalles en [TRADEMARKS.md](TRADEMARKS.md).
