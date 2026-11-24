@@ -4,6 +4,15 @@ Budi te da un entorno de desarrollo Stellar listo en minutos: una sesión en [Te
 
 Proyecto para Ship It: Builder Challenge (BAF × Stellar México, 23 al 27 de noviembre de 2026).
 
+## Qué vamos a lanzar el 27 de noviembre
+
+Budi como la plataforma para aprender a construir en Stellar. Hoy los recursos existen pero están dispersos (Stellar Learn, la documentación, Stellar Quest, Stellar Lab, el Community Fund); Budi los convierte en un camino guiado. El 27 lanzamos:
+
+1. **Una ruta de aprendizaje en español**: explicadores animados que van de qué es Stellar a tu primer contrato Soroban, cada uno con sus fuentes oficiales.
+2. **Tu Budi workspace**: cada lección termina en un ejercicio que abres en un entorno listo en Tenki (Rust, Stellar CLI y VS Code en el navegador), sin instalar nada. Ya funciona: ver «Cómo funciona».
+3. **Tu agente Budi como guía**: te acompaña de la primera lección a desplegar tu primer contrato en testnet, y te conecta con lo que sigue (Stellar Quest, Stellar Community Fund, Stellar APEX).
+4. **Un demo de dos minutos** con el recorrido completo: explicador, workspace y contrato en testnet.
+
 ## Cómo funciona
 
 1. **La imagen** (`tenki/recipe.ts`): Ubuntu con Rust 1.92 y el target `wasm32v1-none`, Stellar CLI 30 y VS Code en el navegador (code-server). Trae este repo adentro, ya compilado una vez, así que tu primera compilación es rápida. Está publicada como imagen pública de Tenki: `dnai/budi-stellar-dev:main`.
