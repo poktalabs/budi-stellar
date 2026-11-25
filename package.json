@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@stellar/stellar-sdk": "^17.4.0",
     "@tenkicloud/sandbox": "^1.5.3"
   },
   "devDependencies": {

@@ -4,12 +4,10 @@
 //   pnpm launch --testnet                    also deploy Bitácora to testnet
 //   pnpm launch --check [--testnet]          smoke test: run everything, then close
 //   pnpm launch close <session-id>
+//   pnpm launch pagar --a <G...> --monto 1 [--memo TEXTO]   pay XLM on testnet (STELLAR_SECRET in .env)
 import { parseArgs } from "node:util";
+import { pagar } from "./pagar.js";
 import { closeSessionById, closeWorkspace, deployStarterToTestnet, openWorkspace, runChecks, startIde } from "./workspace.js";
-
-const apiKey = process.env.TENKI_API_KEY;
-const image = process.env.BUDI_STELLAR_IMAGE;
-if (!apiKey) throw new Error("TENKI_API_KEY is not set");
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -19,8 +17,24 @@ const { values, positionals } = parseArgs({
     check: { type: "boolean", default: false },
     minutes: { type: "string", default: "60" },
     hito: { type: "string", default: "Mi entorno Stellar en Budi" },
+    a: { type: "string" },
+    monto: { type: "string", default: "1" },
+    memo: { type: "string" },
   },
 });
+
+if (positionals[0] === "pagar") {
+  const secret = process.env.STELLAR_SECRET;
+  if (!secret) throw new Error("STELLAR_SECRET is not set");
+  if (!values.a) throw new Error("usage: pnpm launch pagar --a <G...> --monto 1 [--memo TEXTO]");
+  const { url } = await pagar({ secret, to: values.a, amount: values.monto, memo: values.memo });
+  console.log(`pago enviado: ${url}`);
+  process.exit(0);
+}
+
+const apiKey = process.env.TENKI_API_KEY;
+const image = process.env.BUDI_STELLAR_IMAGE;
+if (!apiKey) throw new Error("TENKI_API_KEY is not set");
 
 if (positionals[0] === "close") {
   if (!positionals[1]) throw new Error("usage: pnpm launch close <session-id>");

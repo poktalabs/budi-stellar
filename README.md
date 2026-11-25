@@ -100,6 +100,7 @@ Imprime el `BUDI_STELLAR_IMAGE` nuevo para tu `.env`.
 - [x] Contrato Soroban de ejemplo con pruebas (`contracts/bitacora`)
 - [x] Imagen de Tenki con Rust, Stellar CLI y VS Code en el navegador
 - [x] Lanzador: sesión, tu repo, pruebas, VS Code y despliegue a testnet
+- [x] Pagos en testnet desde la app: `pnpm launch pagar --a <G...> --monto 1 --memo TEXTO` (firma con `STELLAR_SECRET` en `.env`)
 - [x] Pago del curso en custodia (`contracts/matricula`) y Bitácora solo para quien pagó
 - [ ] Explicadores de Stellar hechos con el motor de Budi, servidos por su API (Budi los genera; este repo los enlaza)
 - [ ] El agente Budi dentro de la sesión por MCP y skills, para que te ayude a escribir y probar contratos
