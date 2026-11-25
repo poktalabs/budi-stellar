@@ -215,6 +215,7 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 name = "bitacora"
 version = "0.1.0"
 dependencies = [
+ "matricula",
  "soroban-sdk",
 ]
 
@@ -1176,6 +1177,13 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "matricula"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
 ]
 
 [[package]]

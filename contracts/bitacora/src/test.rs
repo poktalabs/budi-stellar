@@ -135,3 +135,48 @@ fn publica_un_evento_por_hito() {
         std::vec![esperado.to_xdr(&env, &client.address)]
     );
 }
+
+mod con_matricula {
+    use super::*;
+    use matricula::{Matricula, MatriculaClient as Escrow};
+    use soroban_sdk::token::StellarAssetClient;
+
+    fn caso() -> (Env, BitacoraClient<'static>, Escrow<'static>, Address) {
+        let (env, client) = setup();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let alumno = Address::generate(&env);
+        let sac = env.register_stellar_asset_contract_v2(Address::generate(&env));
+        StellarAssetClient::new(&env, &sac.address()).mint(&alumno, &1_000);
+        let escrow = Escrow::new(&env, &env.register(Matricula, (admin.clone(), sac.address())));
+        escrow.crear_curso(&symbol_short!("soroban"), &100, &3600);
+        client.configurar(&admin, &escrow.address, &symbol_short!("soroban"));
+        (env, client, escrow, alumno)
+    }
+
+    #[test]
+    fn sin_pagar_no_registra() {
+        let (env, client, _, alumno) = caso();
+        assert_eq!(
+            client.try_registrar(&alumno, &String::from_str(&env, "Hola")),
+            Err(Ok(Error::NoInscrito))
+        );
+    }
+
+    #[test]
+    fn con_el_curso_pagado_registra() {
+        let (env, client, escrow, alumno) = caso();
+        escrow.inscribir(&alumno, &symbol_short!("soroban"));
+        assert_eq!(client.registrar(&alumno, &String::from_str(&env, "Pagué")), 1);
+    }
+
+    #[test]
+    fn se_configura_una_sola_vez() {
+        let (env, client, escrow, _) = caso();
+        let otro = Address::generate(&env);
+        assert_eq!(
+            client.try_configurar(&otro, &escrow.address, &symbol_short!("rust")),
+            Err(Ok(Error::YaConfigurada))
+        );
+    }
+}

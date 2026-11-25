@@ -57,6 +57,7 @@ Cada builder registra sus hitos onchain. Es el contrato que Budi abre en cada se
 | `registrar(builder, hito)` | Guarda un hito (máximo 140 bytes, hasta 100 por builder). Solo firma el propio builder. Regresa el número del hito. |
 | `hitos(builder)` | Todos los hitos del builder, en orden. |
 | `contar(builder)` | Cuántos hitos lleva. |
+| `configurar(admin, matricula, curso)` | Opcional, una sola vez: desde ahí solo registra quien pagó `curso` en Matrícula. |
 
 Para compilarlo en tu compu (Rust se fija solo con `rust-toolchain.toml`; necesitas [Stellar CLI](https://developers.stellar.org/docs/tools/cli) 30 o más):
 
@@ -64,6 +65,20 @@ Para compilarlo en tu compu (Rust se fija solo con `rust-toolchain.toml`; necesi
 cargo test
 stellar contract build
 ```
+
+## Pagar un curso: Matrícula
+
+Matrícula guarda el pago de un curso en custodia (escrow) hasta que se entrega. El alumno paga al inscribirse y el dinero se queda en el contrato. Cuando Budi entrega el curso, el pago pasa a Budi. Si no lo entrega antes del plazo, el alumno recupera su dinero. Bitácora, una vez configurada, solo deja registrar hitos a quien pagó el curso.
+
+| Función | Qué hace |
+| --- | --- |
+| `crear_curso(curso, precio, plazo)` | El admin (Budi) fija el precio y el plazo de entrega en segundos. |
+| `inscribir(alumno, curso)` | El alumno paga y el pago queda en custodia. Firma el alumno. Regresa el número de inscripción. |
+| `liberar(id)` | Curso entregado: el pago pasa al admin. Firma el admin. |
+| `reembolsar(id)` | Venció el plazo sin entrega: el pago regresa al alumno. Firma el alumno. |
+| `inscrito(alumno, curso)` | Si el alumno pagó el curso (en custodia o entregado). |
+
+En testnet (24 de noviembre de 2026), con XLM: Matrícula [`CAUATYLP...YDAA`](https://stellar.expert/explorer/testnet/contract/CAUATYLPFCJTSFWKQQUC7LO5R5RIIPY7WXE6EEYZLMA7Z7HCW7LHYDAA) y una Bitácora que pide el curso `soroban_101` [`CDOI7II5...4AUQ`](https://stellar.expert/explorer/testnet/contract/CDOI7II5MEP5M765BOWH4LQQ45YBE4HHLH7CN2534UUZLMBDNFUB4AUQ). Sin pagar, `registrar` falla; después de `inscribir`, funciona.
 
 ## Reconstruir la imagen
 
@@ -85,6 +100,7 @@ Imprime el `BUDI_STELLAR_IMAGE` nuevo para tu `.env`.
 - [x] Contrato Soroban de ejemplo con pruebas (`contracts/bitacora`)
 - [x] Imagen de Tenki con Rust, Stellar CLI y VS Code en el navegador
 - [x] Lanzador: sesión, tu repo, pruebas, VS Code y despliegue a testnet
+- [x] Pago del curso en custodia (`contracts/matricula`) y Bitácora solo para quien pagó
 - [ ] Explicadores de Stellar hechos con el motor de Budi, servidos por su API (Budi los genera; este repo los enlaza)
 - [ ] El agente Budi dentro de la sesión por MCP y skills, para que te ayude a escribir y probar contratos
 - [ ] Integración con la app de Budi: un botón «Abrir mi entorno Stellar» que llama a `openWorkspace`
