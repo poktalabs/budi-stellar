@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="54 4 412 312" aria-hidden="true">
+<!-- Budi logo mark, resting pose. Source: poktalabs/budi packages/design-system/logo.tsx (LogoFace), 2026-11-20. Flat by rule: no tile, no shadow. -->
+<path d="M74 300 V 120 A 100 100 0 0 1 260 68.97 A 100 100 0 0 1 446 120 V 300 Z" fill="#0a0a0a"/>
+<path d="M114 204 V 120 A 60 60 0 0 1 234 120 V 204 Z" fill="#ffffff"/>
+<g transform="translate(16 8)"><circle cx="174" cy="150" r="30" fill="#0a0a0a"/><rect x="158" y="131" width="12" height="12" fill="#ffffff" transform="rotate(45 164 137)"/></g>
+<path d="M286 204 V 120 A 60 60 0 0 1 406 120 V 204 Z" fill="#ffffff"/>
+<g transform="translate(16 8)"><circle cx="346" cy="150" r="30" fill="#0a0a0a"/><rect x="330" y="131" width="12" height="12" fill="#ffffff" transform="rotate(45 336 137)"/></g>
+<circle cx="128" cy="252" r="30" fill="#c4177a"/>
+<circle cx="392" cy="252" r="30" fill="#c4177a"/>
+</svg>

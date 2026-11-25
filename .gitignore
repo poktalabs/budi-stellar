@@ -6,3 +6,4 @@ node_modules/
 .stellar/
 *.wasm
 .DS_Store
+web/dist/

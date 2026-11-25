@@ -6,15 +6,19 @@
   "scripts": {
     "image:build": "tsx --env-file-if-exists=.env tenki/build-image.ts",
     "launch": "tsx --env-file-if-exists=.env tenki/launch.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "web:dev": "vite --config web/vite.config.ts",
+    "web:build": "vite build --config web/vite.config.ts"
   },
   "dependencies": {
+    "@stellar/freighter-api": "^6.0.1",
     "@stellar/stellar-sdk": "^17.4.0",
     "@tenkicloud/sandbox": "^1.5.3"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
     "tsx": "^4.23.15",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vite": "^8.3.8"
   }
 }

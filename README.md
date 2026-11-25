@@ -68,6 +68,8 @@ stellar contract build
 
 ## Pagar un curso: Matrícula
 
+**En el navegador:** [stellar.budi.lat/inscribete](https://stellar.budi.lat/inscribete/). Conectas Freighter (en Testnet), pagas el curso con un botón y el pago queda en custodia; después registras tus hitos en la Bitácora del curso. El código está en `web/` (`pnpm web:dev`, `pnpm web:build`).
+
 Matrícula guarda el pago de un curso en custodia (escrow) hasta que se entrega. El alumno paga al inscribirse y el dinero se queda en el contrato. Cuando Budi entrega el curso, el pago pasa a Budi. Si no lo entrega antes del plazo, el alumno recupera su dinero. Bitácora, una vez configurada, solo deja registrar hitos a quien pagó el curso.
 
 | Función | Qué hace |
@@ -102,6 +104,7 @@ Imprime el `BUDI_STELLAR_IMAGE` nuevo para tu `.env`.
 - [x] Lanzador: sesión, tu repo, pruebas, VS Code y despliegue a testnet
 - [x] Pagos en testnet desde la app: `pnpm launch pagar --a <G...> --monto 1 --memo TEXTO` (firma con `STELLAR_SECRET` en `.env`)
 - [x] Pago del curso en custodia (`contracts/matricula`) y Bitácora solo para quien pagó
+- [x] Página para inscribirse con un botón: [stellar.budi.lat/inscribete](https://stellar.budi.lat/inscribete/) (`web/`)
 - [ ] Explicadores de Stellar hechos con el motor de Budi, servidos por su API (Budi los genera; este repo los enlaza)
 - [ ] El agente Budi dentro de la sesión por MCP y skills, para que te ayude a escribir y probar contratos
 - [ ] Integración con la app de Budi: un botón «Abrir mi entorno Stellar» que llama a `openWorkspace`
