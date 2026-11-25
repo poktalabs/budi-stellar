@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aula · Budi para Stellar</title>
+<link rel="icon" href="/brand/logo.svg">
+<link rel="stylesheet" href="/src/aula.css">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="/"><img src="/brand/logo.svg" alt=""><span class="word">Budi</span><span class="for">para Stellar</span></a>
+  <span class="crumb">Lección 1 · Tu primer contrato Soroban</span>
+  <span class="grow"></span>
+  <button class="chip" id="estado-ws" title="Tu workspace">workspace: apagado</button>
+  <span class="net">testnet</span>
+  <span class="clock" id="reloj"></span>
+</header>
+
+<main class="desk" id="escritorio">
+  <section class="win" id="w-leccion">
+    <div class="tbar"><span class="dots"><i></i><i></i><i></i></span><span class="ttl">Lección</span><span class="sub">Tu primer contrato Soroban · 6 escenas</span><button class="x" data-cerrar>×</button></div>
+    <div class="wbody flush"><iframe src="/lecciones/01-primer-contrato/#1" title="Lección 1"></iframe></div>
+  </section>
+
+  <section class="win" id="w-ejercicio">
+    <div class="tbar"><span class="dots"><i></i><i></i><i></i></span><span class="ttl">Ejercicio</span><span class="sub">3 pasos</span><button class="x" data-cerrar>×</button></div>
+    <div class="wbody">
+      <div class="antes">
+        <b>Antes de empezar</b>
+        <span class="nota">Necesitas <a href="https://developers.stellar.org/docs/build/smart-contracts/getting-started/setup" target="_blank" rel="noopener">Rust y Stellar CLI</a> en tu compu (en tu workspace ya vienen). Luego baja el código:</span>
+        <code class="cmd">git clone https://github.com/poktalabs/budi-stellar
+cd budi-stellar</code>
+      </div>
+      <ol class="pasos">
+        <li id="p1"><b>Corre las pruebas</b><code class="cmd">cargo test</code></li>
+        <li id="p2"><b>Despliega tu Bitácora en testnet</b><code class="cmd">stellar keys generate yo --network testnet --fund
+stellar contract build
+stellar contract deploy \
+  --wasm target/wasm32v1-none/release/bitacora.wasm \
+  --source-account yo --network testnet --alias bitacora</code><span class="nota">El último comando imprime la dirección <code>C...</code> de tu Bitácora.</span></li>
+        <li id="p3"><b>Registra tu primer hito</b><code class="cmd">stellar contract invoke --id bitacora \
+  --source-account yo --network testnet -- \
+  registrar --builder "$(stellar keys address yo)" \
+  --hito "Mi primer contrato en Stellar"</code></li>
+      </ol>
+      <label class="lbl" for="contrato">Dirección de tu Bitácora</label>
+      <div class="row">
+        <input id="contrato" placeholder="C..." spellcheck="false" autocomplete="off">
+        <button class="btn primary" id="revisar">Revisar</button>
+      </div>
+      <p class="out" id="out-revisar"></p>
+    </div>
+  </section>
+
+  <section class="win" id="w-editor" hidden>
+    <div class="tbar"><span class="dots"><i></i><i></i><i></i></span><span class="ttl">Editor</span><span class="sub">VS Code en tu workspace</span><button class="x" data-cerrar>×</button></div>
+    <div class="wbody center">
+      <div class="boot" id="boot">
+        <div class="hand">tu workspace: Rust, Stellar CLI y VS Code, listo en un minuto</div>
+        <p>Abrir un workspace pide iniciar sesión con tu cuenta de Budi. <b>Muy pronto.</b> Mientras tanto, puedes hacer el ejercicio en tu compu con <a href="https://developers.stellar.org/docs/build/smart-contracts/getting-started/setup" target="_blank" rel="noopener">Rust y Stellar CLI</a> y el código de <a href="https://github.com/poktalabs/budi-stellar" target="_blank" rel="noopener">este repo</a>.</p>
+        <button class="btn primary" disabled>Abrir mi workspace</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="win" id="w-bitacora" hidden>
+    <div class="tbar"><span class="dots"><i></i><i></i><i></i></span><span class="ttl">Bitácora</span><span class="sub" id="bit-sub">tus hitos en testnet</span><button class="x" data-cerrar>×</button></div>
+    <div class="wbody">
+      <p class="vacio" id="bit-vacio">Cuando revises tu Bitácora en Ejercicio, aquí aparecen tus hitos, leídos de la red.</p>
+      <ul class="hitos" id="bit-lista"></ul>
+    </div>
+  </section>
+</main>
+
+<nav class="dock">
+  <button data-abrir="w-leccion"><span class="ico">▶</span>Lección</button>
+  <button data-abrir="w-editor"><span class="ico">{ }</span>Editor</button>
+  <button data-abrir="w-ejercicio"><span class="ico">✓</span>Ejercicio</button>
+  <button data-abrir="w-bitacora"><span class="ico">≡</span>Bitácora</button>
+</nav>
+<script type="module" src="/src/aula.ts"></script>
+</body>
+</html>

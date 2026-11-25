@@ -17,7 +17,7 @@
   <section class="hero">
     <div class="kick">Curso · Soroban 101</div>
     <h1>Inscríbete y empieza tu bitácora en Stellar</h1>
-    <p class="lead">Pagas el curso desde tu wallet. El pago queda <b>en custodia</b> en un contrato: Budi lo recibe solo cuando te entrega el curso, y si no lo entrega a tiempo, lo recuperas.</p>
+    <p class="lead">Paga con Stellar y <b>te devolvemos tu pago cuando termines el curso</b>. Tu depósito queda en custodia en un contrato: si terminas a tiempo, regresa completo a tu wallet; si no, se queda con Budi. Es tu compromiso.</p>
   </section>
 
   <ol class="steps">
@@ -37,9 +37,14 @@
     <li class="step off" id="paso-inscribir">
       <div class="n">2</div>
       <div class="body">
-        <h2>Paga el curso</h2>
-        <p>Precio: <b id="precio">…</b>. Firmas en Freighter y el pago queda en custodia en Matrícula.</p>
+        <h2>Deposita tu compromiso</h2>
+        <p>Depósito: <b id="precio">…</b>. Firmas en Freighter y queda en custodia en Matrícula hasta que termines.</p>
         <div class="row"><button class="btn primary" id="inscribir" disabled>Inscribirme</button></div>
+        <p class="alt">¿Tienes un código de acceso? Entras gratis, sin depósito.</p>
+        <div class="row">
+          <input id="codigo" placeholder="ALFA-XXXX-XXXX" autocomplete="off" disabled>
+          <button class="btn ghost" id="canjear" disabled>Canjear código</button>
+        </div>
         <p class="out" id="out-inscribir"></p>
       </div>
     </li>
@@ -48,7 +53,7 @@
       <div class="n">3</div>
       <div class="body">
         <h2>Registra tu primer hito</h2>
-        <p>La Bitácora del curso solo acepta a quien pagó. Escribe lo que lograste (hasta 140 caracteres).</p>
+        <p>La Bitácora del curso solo acepta a quien está inscrito. Escribe lo que lograste (hasta 140 caracteres).</p>
         <div class="row">
           <input id="hito" maxlength="140" placeholder="Desplegué mi primer contrato en testnet" disabled>
           <button class="btn primary" id="registrar" disabled>Registrar</button>

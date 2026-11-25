@@ -1,6 +1,7 @@
 // Budi para Stellar en el navegador: el alumno paga el curso (queda en custodia en
 // Matrícula) y registra hitos en la Bitácora que pide ese curso. Firma con Freighter.
 import { getNetworkDetails, isConnected, requestAccess, signTransaction } from "@stellar/freighter-api";
+import { Buffer } from "buffer";
 import { Address, Contract, nativeToScVal, Networks, rpc, scValToNative, TransactionBuilder, xdr } from "@stellar/stellar-sdk";
 
 export const RED = Networks.TESTNET;
@@ -91,6 +92,11 @@ export async function inscrito(cuenta: string): Promise<boolean> {
 
 export async function inscribir(cuenta: string): Promise<string> {
   return escribir(cuenta, MATRICULA, "inscribir", [yo(cuenta), curso()]);
+}
+
+export async function canjear(cuenta: string, codigo: string): Promise<string> {
+  const bytes = xdr.ScVal.scvBytes(Buffer.from(codigo.trim().toUpperCase(), "utf8"));
+  return escribir(cuenta, MATRICULA, "canjear", [yo(cuenta), bytes]);
 }
 
 export async function registrar(cuenta: string, hito: string): Promise<string> {

@@ -1,4 +1,4 @@
-import { conectar, existe, EXPLORER, fondear, hitos, inscribir, inscrito, precioXlm, registrar } from "./stellar";
+import { canjear, conectar, existe, EXPLORER, fondear, hitos, inscribir, inscrito, precioXlm, registrar } from "./stellar";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const corta = (c: string) => `${c.slice(0, 4)}…${c.slice(-4)}`;
@@ -47,11 +47,19 @@ async function revisar() {
   $("paso-inscribir").classList.remove("off");
   $("precio").textContent = `${await precioXlm(cuenta)} XLM`;
   if (await inscrito(cuenta)) {
-    decir("out-inscribir", "Ya pagaste este curso. Tu pago está en custodia o el curso ya se entregó.");
+    decir("out-inscribir", "Ya estás inscrito. Tu depósito está en custodia, o ya terminaste y te lo devolvimos.");
     await abrirHito();
   } else {
     ($("inscribir") as HTMLButtonElement).disabled = false;
+    ($("codigo") as HTMLInputElement).disabled = false;
+    ($("canjear") as HTMLButtonElement).disabled = false;
   }
+}
+
+function cerrarInscripcion() {
+  ($("inscribir") as HTMLButtonElement).disabled = true;
+  ($("codigo") as HTMLInputElement).disabled = true;
+  ($("canjear") as HTMLButtonElement).disabled = true;
 }
 
 $("conectar").addEventListener("click", () =>
@@ -81,13 +89,30 @@ $("inscribir").addEventListener("click", () =>
   ocupado($("inscribir"), "Firma en Freighter…", async () => {
     try {
       const hash = await inscribir(cuenta);
-      decir("out-inscribir", `Listo: tu pago quedó en custodia. ${enlace(hash)}`);
+      decir("out-inscribir", `Listo: tu depósito quedó en custodia. Termina el curso y te lo devolvemos. ${enlace(hash)}`);
       await abrirHito();
     } catch (e) {
       decir("out-inscribir", (e as Error).message, true);
     }
   }).then(async () => {
-    if (await inscrito(cuenta)) ($("inscribir") as HTMLButtonElement).disabled = true;
+    if (await inscrito(cuenta)) cerrarInscripcion();
+  }),
+);
+
+$("canjear").addEventListener("click", () =>
+  ocupado($("canjear"), "Firma en Freighter…", async () => {
+    const texto = ($("codigo") as HTMLInputElement).value;
+    if (!texto.trim()) return decir("out-inscribir", "Escribe tu código primero.", true);
+    try {
+      const hash = await canjear(cuenta, texto);
+      decir("out-inscribir", `Código aceptado: ya estás inscrito, sin depósito. ${enlace(hash)}`);
+      await abrirHito();
+    } catch (e) {
+      const m = (e as Error).message;
+      decir("out-inscribir", /#8|Error\(Contract, #8\)/.test(m) ? "Ese código no existe o ya se usó." : m, true);
+    }
+  }).then(async () => {
+    if (await inscrito(cuenta)) cerrarInscripcion();
   }),
 );
 
