@@ -2,7 +2,7 @@ extern crate std;
 
 use super::*;
 use soroban_sdk::testutils::{Address as _, Ledger};
-use soroban_sdk::{symbol_short, token::StellarAssetClient};
+use soroban_sdk::{symbol_short, token::StellarAssetClient, vec, Bytes, BytesN};
 
 const PRECIO: i128 = 100_0000000; // 100 XLM en stroops
 const PLAZO: u64 = 30 * 24 * 60 * 60;
@@ -55,32 +55,41 @@ fn no_se_inscribe_dos_veces_ni_a_un_curso_que_no_existe() {
 }
 
 #[test]
-fn liberar_paga_al_admin_y_sigue_inscrito() {
+fn completar_devuelve_el_deposito_al_alumno() {
     let c = caso();
     let id = c.m.inscribir(&c.alumno, &symbol_short!("soroban"));
-    c.m.liberar(&id);
-    assert_eq!(c.token.balance(&c.admin), PRECIO);
+    c.m.completar(&id);
+    assert_eq!(c.token.balance(&c.alumno), PRECIO * 3);
     assert_eq!(c.token.balance(&c.m.address), 0);
-    assert_eq!(c.m.inscripcion(&id).estado, Estado::Liberada);
+    assert_eq!(c.token.balance(&c.admin), 0);
+    assert_eq!(c.m.inscripcion(&id).estado, Estado::Devuelta);
     assert!(c.m.inscrito(&c.alumno, &symbol_short!("soroban")));
-    assert_eq!(c.m.try_liberar(&id), Err(Ok(Error::NoEstaEnCustodia)));
-    assert_eq!(c.m.try_reembolsar(&id), Err(Ok(Error::NoEstaEnCustodia)));
+    assert_eq!(c.m.try_completar(&id), Err(Ok(Error::NoEstaEnCustodia)));
+    assert_eq!(c.m.try_cobrar(&id), Err(Ok(Error::NoEstaEnCustodia)));
 }
 
 #[test]
-fn reembolso_solo_despues_del_plazo() {
+fn no_se_completa_despues_del_plazo() {
     let c = caso();
     let id = c.m.inscribir(&c.alumno, &symbol_short!("soroban"));
-    assert_eq!(c.m.try_reembolsar(&id), Err(Ok(Error::PlazoNoVencido)));
+    c.env.ledger().with_mut(|l| l.timestamp += PLAZO);
+    assert_eq!(c.m.try_completar(&id), Err(Ok(Error::PlazoVencido)));
+}
+
+#[test]
+fn cobrar_solo_despues_del_plazo() {
+    let c = caso();
+    let id = c.m.inscribir(&c.alumno, &symbol_short!("soroban"));
+    assert_eq!(c.m.try_cobrar(&id), Err(Ok(Error::PlazoNoVencido)));
 
     c.env.ledger().with_mut(|l| l.timestamp += PLAZO);
-    c.m.reembolsar(&id);
-    assert_eq!(c.token.balance(&c.alumno), PRECIO * 3);
-    assert_eq!(c.m.inscripcion(&id).estado, Estado::Reembolsada);
+    c.m.cobrar(&id);
+    assert_eq!(c.token.balance(&c.admin), PRECIO);
+    assert_eq!(c.token.balance(&c.alumno), PRECIO * 2);
+    assert_eq!(c.m.inscripcion(&id).estado, Estado::Cobrada);
     assert!(!c.m.inscrito(&c.alumno, &symbol_short!("soroban")));
-    assert_eq!(c.m.try_liberar(&id), Err(Ok(Error::NoEstaEnCustodia)));
 
-    // Tras un reembolso puede volver a inscribirse.
+    // Puede volver a inscribirse con un depósito nuevo.
     assert_eq!(c.m.inscribir(&c.alumno, &symbol_short!("soroban")), 2);
 }
 
@@ -89,7 +98,7 @@ fn firmas_requeridas() {
     let c = caso();
     let id = c.m.inscribir(&c.alumno, &symbol_short!("soroban"));
     assert_eq!(c.env.auths()[0].0, c.alumno);
-    c.m.liberar(&id);
+    c.m.completar(&id);
     assert_eq!(c.env.auths()[0].0, c.admin);
 }
 
@@ -99,5 +108,60 @@ fn precio_invalido() {
     assert_eq!(
         c.m.try_crear_curso(&symbol_short!("gratis"), &0, &PLAZO),
         Err(Ok(Error::PrecioInvalido))
+    );
+}
+
+fn codigo(c: &Caso, texto: &str) -> (Bytes, BytesN<32>) {
+    let b = Bytes::from_slice(&c.env, texto.as_bytes());
+    let h: BytesN<32> = c.env.crypto().sha256(&b).into();
+    (b, h)
+}
+
+#[test]
+fn un_codigo_da_acceso_gratis_una_sola_vez() {
+    let c = caso();
+    let (b, h) = codigo(&c, "ALFA-1234");
+    c.m.crear_codigos(&symbol_short!("soroban"), &vec![&c.env, h]);
+
+    let id = c.m.canjear(&c.alumno, &b);
+    assert!(c.m.inscrito(&c.alumno, &symbol_short!("soroban")));
+    assert_eq!(c.m.inscripcion(&id).monto, 0);
+    assert_eq!(c.token.balance(&c.alumno), PRECIO * 3);
+
+    // Otro alumno no puede reusar el mismo código.
+    let otro = Address::generate(&c.env);
+    assert_eq!(c.m.try_canjear(&otro, &b), Err(Ok(Error::CodigoInvalido)));
+
+    // Terminar o vencer sin depósito no mueve dinero.
+    c.m.completar(&id);
+    assert_eq!(c.token.balance(&c.alumno), PRECIO * 3);
+}
+
+#[test]
+fn codigo_desconocido_no_sirve() {
+    let c = caso();
+    let (b, _) = codigo(&c, "NO-EXISTE");
+    assert_eq!(c.m.try_canjear(&c.alumno, &b), Err(Ok(Error::CodigoInvalido)));
+}
+
+#[test]
+fn con_codigo_no_se_inscribe_dos_veces() {
+    let c = caso();
+    let (b, h) = codigo(&c, "ALFA-5678");
+    c.m.crear_codigos(&symbol_short!("soroban"), &vec![&c.env, h]);
+    c.m.inscribir(&c.alumno, &symbol_short!("soroban"));
+    assert_eq!(c.m.try_canjear(&c.alumno, &b), Err(Ok(Error::YaInscrito)));
+    // El código sigue disponible para alguien más.
+    let otro = Address::generate(&c.env);
+    c.m.canjear(&otro, &b);
+}
+
+#[test]
+fn codigos_solo_para_cursos_que_existen() {
+    let c = caso();
+    let (_, h) = codigo(&c, "ALFA-0000");
+    assert_eq!(
+        c.m.try_crear_codigos(&symbol_short!("rust"), &vec![&c.env, h]),
+        Err(Ok(Error::CursoNoExiste))
     );
 }

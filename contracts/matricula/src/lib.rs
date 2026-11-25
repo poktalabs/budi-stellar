@@ -1,15 +1,16 @@
-//! Matrícula: el pago de un curso queda en custodia (escrow) hasta que se entrega.
+//! Matrícula: un depósito de compromiso (skin in the game) para tomar un curso.
 //!
-//! El alumno paga al inscribirse y el dinero se queda en el contrato.
-//! Cuando Budi marca el curso como terminado, `liberar` le pasa el pago a Budi.
-//! Si el curso no se entrega antes del plazo, el alumno recupera su pago con
-//! `reembolsar`. Otros contratos (como Bitácora) preguntan `inscrito` para
-//! saber si alguien pagó un curso.
+//! El alumno deposita al inscribirse y el dinero se queda en el contrato.
+//! Si termina el curso, Budi lo confirma con `completar` y el depósito regresa
+//! completo al alumno. Si no lo termina antes del plazo, Budi se lo queda con
+//! `cobrar`. Para probadores alfa, Budi reparte códigos de un solo uso: con
+//! `canjear` el alumno entra sin depósito. Otros contratos (como Bitácora) preguntan `inscrito` para saber si
+//! alguien está en el curso.
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractevent, contractimpl, contracttype, token, Address, Env,
-    Symbol,
+    contract, contracterror, contractevent, contractimpl, contracttype, token, Address, Bytes,
+    BytesN, Env, Symbol, Vec,
 };
 
 const TTL_UMBRAL: u32 = 17_280; // ~1 día en ledgers de 5 s
@@ -18,9 +19,9 @@ const TTL_EXTENDER: u32 = 518_400; // ~30 días
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Curso {
-    /// Precio en la unidad mínima del token (stroops si es XLM).
+    /// Depósito en la unidad mínima del token (stroops si es XLM).
     pub precio: i128,
-    /// Segundos que tiene Budi para entregar el curso antes de que proceda el reembolso.
+    /// Segundos que tiene el alumno para terminar el curso.
     pub plazo: u64,
 }
 
@@ -28,12 +29,12 @@ pub struct Curso {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum Estado {
-    /// Pagada y en custodia.
+    /// Depósito en custodia: el curso está en marcha.
     EnCustodia = 0,
-    /// Curso entregado: el pago ya es de Budi.
-    Liberada = 1,
-    /// No se entregó a tiempo: el pago regresó al alumno.
-    Reembolsada = 2,
+    /// El alumno terminó el curso: su depósito regresó.
+    Devuelta = 1,
+    /// Venció el plazo sin terminar: Budi se quedó el depósito.
+    Cobrada = 2,
 }
 
 #[contracttype]
@@ -42,7 +43,7 @@ pub struct Inscripcion {
     pub alumno: Address,
     pub curso: Symbol,
     pub monto: i128,
-    /// Momento (segundos unix) a partir del cual el alumno puede pedir reembolso.
+    /// Momento (segundos unix) en que vence el plazo para terminar el curso.
     pub limite: u64,
     pub estado: Estado,
 }
@@ -55,6 +56,8 @@ enum Clave {
     Curso(Symbol),
     Inscripcion(u32),
     Activa(Address, Symbol),
+    /// sha256 del código de un solo uso -> curso al que da acceso.
+    Codigo(BytesN<32>),
 }
 
 #[contracterror]
@@ -67,6 +70,8 @@ pub enum Error {
     InscripcionNoExiste = 4,
     NoEstaEnCustodia = 5,
     PlazoNoVencido = 6,
+    PlazoVencido = 7,
+    CodigoInvalido = 8,
 }
 
 #[contractevent]
@@ -82,18 +87,18 @@ pub struct Inscrito {
 
 #[contractevent]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Liberado {
+pub struct Devuelto {
     #[topic]
     pub id: u32,
+    pub alumno: Address,
     pub monto: i128,
 }
 
 #[contractevent]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Reembolsado {
+pub struct Cobrado {
     #[topic]
     pub id: u32,
-    pub alumno: Address,
     pub monto: i128,
 }
 
@@ -102,7 +107,7 @@ pub struct Matricula;
 
 #[contractimpl]
 impl Matricula {
-    /// `admin` es Budi: crea cursos y libera pagos. `token` es el contrato del
+    /// `admin` es Budi: crea cursos, confirma quién terminó y cobra lo vencido. `token` es el contrato del
     /// token con el que se cobra (en testnet, el de XLM nativo).
     pub fn __constructor(env: Env, admin: Address, token: Address) {
         env.storage().instance().set(&Clave::Admin, &admin);
@@ -124,83 +129,68 @@ impl Matricula {
         Ok(())
     }
 
-    /// El alumno paga el curso y el pago queda en custodia en este contrato.
+    /// El alumno deposita y el depósito queda en custodia en este contrato.
     /// Regresa el número de inscripción.
     pub fn inscribir(env: Env, alumno: Address, curso: Symbol) -> Result<u32, Error> {
         alumno.require_auth();
         let datos = Self::curso(env.clone(), curso.clone())?;
-        let activa = Clave::Activa(alumno.clone(), curso.clone());
-        if let Some(id) = env.storage().persistent().get::<_, u32>(&activa) {
-            if Self::inscripcion(env.clone(), id)?.estado != Estado::Reembolsada {
-                return Err(Error::YaInscrito);
-            }
-        }
-
+        Self::sin_inscripcion_activa(&env, &alumno, &curso)?;
         Self::token(&env).transfer(&alumno, &env.current_contract_address(), &datos.precio);
-
-        let id: u32 = env.storage().instance().get(&Clave::Siguiente).unwrap_or(1);
-        env.storage().instance().set(&Clave::Siguiente, &(id + 1));
-        let inscripcion = Inscripcion {
-            alumno: alumno.clone(),
-            curso: curso.clone(),
-            monto: datos.precio,
-            limite: env.ledger().timestamp() + datos.plazo,
-            estado: Estado::EnCustodia,
-        };
-        Self::guardar(&env, id, &inscripcion);
-        env.storage().persistent().set(&activa, &id);
-        env.storage()
-            .persistent()
-            .extend_ttl(&activa, TTL_UMBRAL, TTL_EXTENDER);
-        env.storage().instance().extend_ttl(TTL_UMBRAL, TTL_EXTENDER);
-
-        Inscrito {
-            alumno,
-            curso,
-            id,
-            monto: datos.precio,
-        }
-        .publish(&env);
-        Ok(id)
+        Ok(Self::alta(&env, alumno, curso, datos.precio, datos.plazo))
     }
 
-    /// Budi entregó el curso: el pago en custodia pasa al admin. Solo el admin.
-    pub fn liberar(env: Env, id: u32) -> Result<(), Error> {
-        let admin = Self::admin(env.clone());
-        admin.require_auth();
-        let mut inscripcion = Self::inscripcion(env.clone(), id)?;
-        if inscripcion.estado != Estado::EnCustodia {
-            return Err(Error::NoEstaEnCustodia);
+    /// Guarda códigos de acceso gratis de un solo uso para `curso`. Se guarda el sha256
+    /// de cada código, nunca el código. Solo el admin.
+    pub fn crear_codigos(env: Env, curso: Symbol, hashes: Vec<BytesN<32>>) -> Result<(), Error> {
+        Self::admin(env.clone()).require_auth();
+        Self::curso(env.clone(), curso.clone())?;
+        for h in hashes.iter() {
+            let clave = Clave::Codigo(h);
+            env.storage().persistent().set(&clave, &curso);
+            env.storage()
+                .persistent()
+                .extend_ttl(&clave, TTL_UMBRAL, TTL_EXTENDER);
         }
-        inscripcion.estado = Estado::Liberada;
-        Self::guardar(&env, id, &inscripcion);
-        Self::token(&env).transfer(&env.current_contract_address(), &admin, &inscripcion.monto);
-        Liberado {
-            id,
-            monto: inscripcion.monto,
-        }
-        .publish(&env);
         Ok(())
     }
 
-    /// Venció el plazo y el curso no se entregó: el alumno recupera su pago.
-    pub fn reembolsar(env: Env, id: u32) -> Result<(), Error> {
+    /// El alumno entra al curso con un código de un solo uso, sin depósito. El código
+    /// se borra al usarse. Regresa el número de inscripción.
+    pub fn canjear(env: Env, alumno: Address, codigo: Bytes) -> Result<u32, Error> {
+        alumno.require_auth();
+        let clave = Clave::Codigo(env.crypto().sha256(&codigo).into());
+        let curso: Symbol = env
+            .storage()
+            .persistent()
+            .get(&clave)
+            .ok_or(Error::CodigoInvalido)?;
+        let datos = Self::curso(env.clone(), curso.clone())?;
+        Self::sin_inscripcion_activa(&env, &alumno, &curso)?;
+        env.storage().persistent().remove(&clave);
+        Ok(Self::alta(&env, alumno, curso, 0, datos.plazo))
+    }
+
+    /// El alumno terminó el curso a tiempo: su depósito regresa completo. Firma el admin,
+    /// que es quien confirma que terminó.
+    pub fn completar(env: Env, id: u32) -> Result<(), Error> {
+        Self::admin(env.clone()).require_auth();
         let mut inscripcion = Self::inscripcion(env.clone(), id)?;
-        inscripcion.alumno.require_auth();
         if inscripcion.estado != Estado::EnCustodia {
             return Err(Error::NoEstaEnCustodia);
         }
-        if env.ledger().timestamp() < inscripcion.limite {
-            return Err(Error::PlazoNoVencido);
+        if env.ledger().timestamp() >= inscripcion.limite {
+            return Err(Error::PlazoVencido);
         }
-        inscripcion.estado = Estado::Reembolsada;
+        inscripcion.estado = Estado::Devuelta;
         Self::guardar(&env, id, &inscripcion);
-        Self::token(&env).transfer(
-            &env.current_contract_address(),
-            &inscripcion.alumno,
-            &inscripcion.monto,
-        );
-        Reembolsado {
+        if inscripcion.monto > 0 {
+            Self::token(&env).transfer(
+                &env.current_contract_address(),
+                &inscripcion.alumno,
+                &inscripcion.monto,
+            );
+        }
+        Devuelto {
             id,
             alumno: inscripcion.alumno,
             monto: inscripcion.monto,
@@ -209,7 +199,31 @@ impl Matricula {
         Ok(())
     }
 
-    /// ¿`alumno` pagó `curso` (en custodia o ya entregado)?
+    /// Venció el plazo y el alumno no terminó: Budi se queda el depósito. Firma el admin.
+    pub fn cobrar(env: Env, id: u32) -> Result<(), Error> {
+        let admin = Self::admin(env.clone());
+        admin.require_auth();
+        let mut inscripcion = Self::inscripcion(env.clone(), id)?;
+        if inscripcion.estado != Estado::EnCustodia {
+            return Err(Error::NoEstaEnCustodia);
+        }
+        if env.ledger().timestamp() < inscripcion.limite {
+            return Err(Error::PlazoNoVencido);
+        }
+        inscripcion.estado = Estado::Cobrada;
+        Self::guardar(&env, id, &inscripcion);
+        if inscripcion.monto > 0 {
+            Self::token(&env).transfer(&env.current_contract_address(), &admin, &inscripcion.monto);
+        }
+        Cobrado {
+            id,
+            monto: inscripcion.monto,
+        }
+        .publish(&env);
+        Ok(())
+    }
+
+    /// ¿`alumno` está en `curso` (depósito en custodia o curso terminado)?
     pub fn inscrito(env: Env, alumno: Address, curso: Symbol) -> bool {
         match env
             .storage()
@@ -217,7 +231,7 @@ impl Matricula {
             .get::<_, u32>(&Clave::Activa(alumno, curso))
         {
             Some(id) => match Self::inscripcion(env, id) {
-                Ok(i) => i.estado != Estado::Reembolsada,
+                Ok(i) => i.estado != Estado::Cobrada,
                 Err(_) => false,
             },
             None => false,
@@ -245,6 +259,43 @@ impl Matricula {
     fn token(env: &Env) -> token::Client<'_> {
         let id: Address = env.storage().instance().get(&Clave::Token).unwrap();
         token::Client::new(env, &id)
+    }
+
+    fn sin_inscripcion_activa(env: &Env, alumno: &Address, curso: &Symbol) -> Result<(), Error> {
+        let activa = Clave::Activa(alumno.clone(), curso.clone());
+        if let Some(id) = env.storage().persistent().get::<_, u32>(&activa) {
+            if Self::inscripcion(env.clone(), id)?.estado != Estado::Cobrada {
+                return Err(Error::YaInscrito);
+            }
+        }
+        Ok(())
+    }
+
+    fn alta(env: &Env, alumno: Address, curso: Symbol, monto: i128, plazo: u64) -> u32 {
+        let id: u32 = env.storage().instance().get(&Clave::Siguiente).unwrap_or(1);
+        env.storage().instance().set(&Clave::Siguiente, &(id + 1));
+        let inscripcion = Inscripcion {
+            alumno: alumno.clone(),
+            curso: curso.clone(),
+            monto,
+            limite: env.ledger().timestamp() + plazo,
+            estado: Estado::EnCustodia,
+        };
+        Self::guardar(env, id, &inscripcion);
+        let activa = Clave::Activa(alumno.clone(), curso.clone());
+        env.storage().persistent().set(&activa, &id);
+        env.storage()
+            .persistent()
+            .extend_ttl(&activa, TTL_UMBRAL, TTL_EXTENDER);
+        env.storage().instance().extend_ttl(TTL_UMBRAL, TTL_EXTENDER);
+        Inscrito {
+            alumno,
+            curso,
+            id,
+            monto,
+        }
+        .publish(env);
+        id
     }
 
     fn guardar(env: &Env, id: u32, inscripcion: &Inscripcion) {
