@@ -50,3 +50,26 @@ input:disabled { background: var(--paper-dark); }
 .hand { font: 600 1.1rem/1.3 var(--hand); color: var(--violet); margin-bottom: 48px; }
 @media (max-width: 600px) { .step { flex-direction: column; gap: 10px; } }
 .alt { margin: 16px 0 8px !important; font-size: 15px !important; }
+
+/* contrata */
+.panel { background: var(--panel); border: 2px solid var(--ink); border-radius: 8px; padding: 22px; margin-bottom: 16px; }
+.nota { font-size: 14px; color: var(--charcoal); margin: 2px 0 10px; }
+.nota code { background: var(--paper-dark); padding: 0 4px; border-radius: 4px; }
+.equipos, .trabajos { display: grid; gap: 10px; }
+.equipo { display: flex; gap: 16px; align-items: center; border: 2px solid var(--ink); border-radius: 8px; padding: 12px 14px; }
+.equipo .nota { margin: 0; }
+.equipo.retirado { border-style: dashed; opacity: .6; }
+.pts { flex: none; width: 64px; text-align: center; }
+.pts b { display: block; font: 800 1.8rem/1 var(--display); color: var(--violet); }
+.pts span { font: 700 0.65rem/1 var(--sans); letter-spacing: 0.08em; text-transform: uppercase; }
+.campo { display: grid; gap: 4px; font: 700 0.7rem/1.2 var(--sans); letter-spacing: 0.08em; text-transform: uppercase; flex: 1; min-width: 140px; }
+.campo input, .campo select { min-width: 0; font: 400 16px/1.4 var(--sans); letter-spacing: normal; text-transform: none; padding: 10px 12px; border: 2px solid var(--ink); border-radius: 6px; background: var(--panel); }
+.campo select:disabled { background: var(--paper-dark); }
+.trabajo { border: 2px solid var(--ink); border-radius: 8px; padding: 12px 14px; }
+.trabajo .cab { font-size: 15px; }
+.trabajo .row { margin-top: 6px; }
+.trabajo input { min-width: 180px; }
+.estado { font: 700 0.7rem/1 var(--sans); letter-spacing: 0.06em; text-transform: uppercase; border: 2px solid var(--ink); border-radius: 6px; padding: 3px 6px; }
+.estado.e2 { background: var(--ok); color: #fff; }
+.estado.e5 { background: var(--gold); }
+.rol { float: right; font: 600 13px/1.6 var(--sans); color: var(--charcoal); }

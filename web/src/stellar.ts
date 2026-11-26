@@ -46,7 +46,7 @@ export async function existe(cuenta: string): Promise<boolean> {
 }
 
 /** Lee un valor del contrato sin firmar (simulación). */
-async function leer(cuenta: string, contrato: string, metodo: string, args: xdr.ScVal[]) {
+export async function leer(cuenta: string, contrato: string, metodo: string, args: xdr.ScVal[]) {
   const fuente = await server.getAccount(cuenta);
   const tx = new TransactionBuilder(fuente, { fee: "100", networkPassphrase: RED })
     .addOperation(new Contract(contrato).call(metodo, ...args))
@@ -58,7 +58,7 @@ async function leer(cuenta: string, contrato: string, metodo: string, args: xdr.
 }
 
 /** Firma con Freighter, envía y espera la confirmación. Regresa el hash. */
-async function escribir(cuenta: string, contrato: string, metodo: string, args: xdr.ScVal[]) {
+export async function escribir(cuenta: string, contrato: string, metodo: string, args: xdr.ScVal[]) {
   const fuente = await server.getAccount(cuenta);
   const tx = new TransactionBuilder(fuente, { fee: "100000", networkPassphrase: RED })
     .addOperation(new Contract(contrato).call(metodo, ...args))

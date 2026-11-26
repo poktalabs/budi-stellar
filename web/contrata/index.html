@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contrata a un equipo · Budi para Stellar</title>
+<meta name="description" content="Contrata a un equipo humano + agente Budi por su reputación en Stellar. Tu pago queda en custodia hasta que aceptes la entrega.">
+<link rel="icon" href="/brand/logo.svg">
+<link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <a class="home" href="/"><img src="/brand/logo.svg" alt=""><span class="word">Budi</span><span class="for">para Stellar</span></a>
+  <span class="net">Testnet</span>
+</div></header>
+
+<main class="wrap">
+  <section class="hero">
+    <div class="kick">Reputación · habilidad Soroban</div>
+    <h1>Contrata a un equipo por su reputación</h1>
+    <p class="lead">Cada equipo es una persona y su agente Budi. Su puntaje sale <b>solo de trabajo pagado y entregado</b>, y vence si no trabajan. Tu pago queda en custodia: el equipo cobra cuando aceptas, y si no entrega a tiempo, lo recuperas.</p>
+  </section>
+
+  <section class="panel">
+    <h2>Equipos con la insignia Soroban 101</h2>
+    <p class="nota">Puntaje vigente en la habilidad <code>soroban</code>, leído del contrato en este momento.</p>
+    <div id="equipos" class="equipos"><p class="nota">Leyendo la red…</p></div>
+  </section>
+
+  <ol class="steps">
+    <li class="step" id="paso-wallet">
+      <div class="n">1</div>
+      <div class="body">
+        <h2>Conecta tu wallet</h2>
+        <p>Usa <a href="https://www.freighter.app" target="_blank" rel="noopener">Freighter</a> en Testnet. Es dinero de prueba: no cuesta nada.</p>
+        <div class="row">
+          <button class="btn primary" id="conectar">Conectar wallet</button>
+          <button class="btn ghost" id="fondear" hidden>Fondear con XLM de prueba</button>
+        </div>
+        <p class="out" id="out-wallet"></p>
+      </div>
+    </li>
+
+    <li class="step off" id="paso-contratar">
+      <div class="n">2</div>
+      <div class="body">
+        <h2>Contrata</h2>
+        <p>Elige un equipo arriba, el pago y el plazo de entrega. Firmas en Freighter y el pago queda en custodia en el contrato.</p>
+        <div class="row">
+          <label class="campo">Equipo<select id="equipo" disabled></select></label>
+          <label class="campo">Pago (XLM)<input id="monto" type="number" min="1" step="1" value="30" disabled></label>
+          <label class="campo">Plazo (días)<input id="plazo" type="number" min="1" step="1" value="7" disabled></label>
+        </div>
+        <p class="nota">Desde 10 XLM el trabajo suma 1 punto por cada 10 XLM, hasta 5 puntos. Abajo de 10 XLM se paga pero no suma.</p>
+        <div class="row"><button class="btn primary" id="contratar" disabled>Contratar</button></div>
+        <p class="out" id="out-contratar"></p>
+      </div>
+    </li>
+
+    <li class="step off" id="paso-trabajos">
+      <div class="n">3</div>
+      <div class="body">
+        <h2>Tus trabajos</h2>
+        <p>Si contrataste: acepta la entrega, o disputa dentro del plazo de revisión. Si eres el humano de un equipo: entrega con una prueba, y cobra si el cliente no responde.</p>
+        <div id="trabajos" class="trabajos"></div>
+        <p class="out" id="out-trabajos"></p>
+      </div>
+    </li>
+  </ol>
+
+  <p class="hand">Todo corre en Stellar testnet. El contrato Reputación y este código están en <a href="https://github.com/poktalabs/budi-stellar">github.com/poktalabs/budi-stellar</a>.</p>
+</main>
+<script type="module" src="/src/contrata.ts"></script>
+</body>
+</html>
