@@ -68,7 +68,9 @@ stellar contract build
 
 ## El aula: la lección 1
 
-En [stellar.budi.lat/aula](https://stellar.budi.lat/aula/) hay un escritorio con ventanas: la lección (un explicador animado), el ejercicio, tu Bitácora y, pronto, el editor de tu workspace. La lección 1, «Tu primer contrato Soroban», termina cuando despliegas tu propia Bitácora en testnet y registras un hito. El aula lo revisa leyendo los eventos de tu contrato en la red: no tienes que mandarnos nada. El código está en `web/` (`pnpm web:dev`, `pnpm web:build`).
+En [stellar.budi.lat/aula](https://stellar.budi.lat/aula/) hay un escritorio con ventanas: la lección (un explicador animado), el ejercicio, tu Bitácora y el editor de tu workspace. La lección 1, «Tu primer contrato Soroban», termina cuando despliegas tu propia Bitácora en testnet y registras un hito. El aula lo revisa leyendo los eventos de tu contrato en la red: no tienes que mandarnos nada. El código está en `web/` (`pnpm web:dev`, `pnpm web:build`).
+
+El editor: entras con tu cuenta de Budi, abres tu workspace y en menos de un minuto aparece VS Code de tu sesión dentro de la ventana. Tienes uno a la vez, con tiempo límite, y lo apagas desde la misma ventana. Lo abre el servicio de `server/` (`pnpm server`), que revisa tu sesión de Budi y llama a `openWorkspace`.
 
 ## Paga con Stellar y te lo devolvemos al terminar: Matrícula
 
@@ -147,7 +149,7 @@ Imprime el `BUDI_STELLAR_IMAGE` nuevo para tu `.env`.
 - [x] Reputación por habilidad para equipos humano + agente (`contracts/reputacion`)
 - [ ] Explicadores de Stellar hechos con el motor de Budi, servidos por su API (Budi los genera; este repo los enlaza)
 - [ ] El agente Budi dentro de la sesión por MCP y skills, para que te ayude a escribir y probar contratos
-- [ ] Integración con la app de Budi: un botón «Abrir mi entorno Stellar» que llama a `openWorkspace`
+- [x] Abrir tu workspace desde el aula con tu cuenta de Budi (`server/` y la ventana Editor)
 
 ## Licencia y marca
 

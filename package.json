@@ -13,15 +13,21 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.1.11",
+    "@privy-io/react-auth": "^3.52.1",
     "@stellar/freighter-api": "^6.0.1",
     "@stellar/stellar-sdk": "^17.4.0",
     "@tenkicloud/sandbox": "^1.5.3",
     "buffer": "^6.0.3",
     "hono": "^4.13.22",
-    "jose": "^6.2.18"
+    "jose": "^6.2.18",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
+    "@types/react": "^19.3.3",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vite": "^8.3.8"

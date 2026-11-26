@@ -54,13 +54,10 @@ stellar contract deploy \
   </section>
 
   <section class="win" id="w-editor" hidden>
-    <div class="tbar"><span class="dots"><i></i><i></i><i></i></span><span class="ttl">Editor</span><span class="sub">VS Code en tu workspace</span><button class="x" data-cerrar>×</button></div>
-    <div class="wbody center">
-      <div class="boot" id="boot">
-        <div class="hand">tu workspace: Rust, Stellar CLI y VS Code, listo en un minuto</div>
-        <p>Abrir un workspace pide iniciar sesión con tu cuenta de Budi. <b>Muy pronto.</b> Mientras tanto, puedes hacer el ejercicio en tu compu con <a href="https://developers.stellar.org/docs/build/smart-contracts/getting-started/setup" target="_blank" rel="noopener">Rust y Stellar CLI</a> y el código de <a href="https://github.com/poktalabs/budi-stellar" target="_blank" rel="noopener">este repo</a>.</p>
-        <button class="btn primary" disabled>Abrir mi workspace</button>
-      </div>
+    <div class="tbar"><span class="dots"><i></i><i></i><i></i></span><span class="ttl">Editor</span><span class="sub">tu workspace en Tenki</span><button class="mini" id="ws-cerrar" hidden>Apagar</button><button class="x" data-cerrar>×</button></div>
+    <div class="wbody center ide-body">
+      <div class="boot" id="boot"><p class="nota">Cargando…</p></div>
+      <iframe id="ide" title="Tu workspace" hidden allow="clipboard-read; clipboard-write"></iframe>
     </div>
   </section>
 
@@ -80,5 +77,6 @@ stellar contract deploy \
   <button data-abrir="w-bitacora"><span class="ico">≡</span>Bitácora</button>
 </nav>
 <script type="module" src="/src/aula.ts"></script>
+<script type="module" src="/src/editor.ts"></script>
 </body>
 </html>

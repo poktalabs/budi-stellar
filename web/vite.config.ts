@@ -1,9 +1,11 @@
 import { resolve } from "node:path";
+import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 // Se publica en https://stellar.budi.lat: /aula/ (el entorno de práctica), /inscribete/ y /contrata/ (contratar a un equipo por su reputación).
 export default defineConfig({
   root: "web",
+  plugins: [react()],
   base: "/",
   build: {
     outDir: "dist",
