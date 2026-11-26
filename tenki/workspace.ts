@@ -122,18 +122,39 @@ export async function deployStarterToTestnet(ws: Workspace, hito: string): Promi
   return { ...r, ok: r.ok && Boolean(contractId), contractId };
 }
 
-/** code-server on the project, behind a fresh password, exposed as a preview URL. */
-export async function startIde(ws: Workspace, ttlMinutes = 60): Promise<{ url: string; password: string }> {
-  const password = randomBytes(18).toString("base64url");
+const EDITOR_SETTINGS = {
+  "security.workspace.trust.enabled": false,
+  "workbench.startupEditor": "none",
+  "workbench.tips.enabled": false,
+  "chat.disableAIFeatures": true,
+  "workbench.secondarySideBar.defaultVisibility": "hidden",
+  "telemetry.telemetryLevel": "off",
+};
+
+/**
+ * code-server on the project, exposed as a preview URL. With a password by
+ * default; `auth: "none"` is for the aula, which embeds the editor in its own
+ * page, where browsers drop code-server's login cookie. There the random preview
+ * URL, given only to the signed-in person and gone with the session, is the secret.
+ */
+export async function startIde(
+  ws: Workspace,
+  ttlMinutes = 60,
+  auth: "password" | "none" = "password",
+): Promise<{ url: string; password?: string }> {
+  const password = auth === "password" ? randomBytes(18).toString("base64url") : undefined;
+  // A quiet editor: the project is trusted (it is the person's own), no welcome
+  // page, and no Copilot panel, since their Budi agent is the assistant here.
+  await ws.session.writeFile(".local/share/code-server/User/settings.json", JSON.stringify(EDITOR_SETTINGS, null, 2));
   // setsid nohup so the IDE outlives this exec; the password reaches it only through the process env.
   const r = await ws.session.exec("bash", {
     args: [
       "-lc",
       sh(
-        `mkdir -p ${LAYOUT.runDir} && setsid nohup code-server --bind-addr 0.0.0.0:${IDE_PORT} --auth password --disable-telemetry ${LAYOUT.project} < /dev/null > ${LAYOUT.runDir}/ide.log 2>&1 &`,
+        `mkdir -p ${LAYOUT.runDir} && setsid nohup code-server --bind-addr 0.0.0.0:${IDE_PORT} --auth ${auth} --disable-telemetry ${LAYOUT.project} < /dev/null > ${LAYOUT.runDir}/ide.log 2>&1 &`,
       ),
     ],
-    env: { PASSWORD: password },
+    env: password ? { PASSWORD: password } : {},
     timeoutMs: 30_000,
   });
   if (r.exitCode !== 0) throw new Error(`code-server did not start: ${stderrText(r)}`);

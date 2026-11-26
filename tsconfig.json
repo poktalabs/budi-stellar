@@ -8,5 +8,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["tenki/**/*.ts"]
+  "include": ["tenki/**/*.ts", "server/**/*.ts"]
 }
