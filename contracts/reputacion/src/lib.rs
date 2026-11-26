@@ -11,6 +11,9 @@
 //! - **Piso y tope.** Un trabajo por debajo del piso de la habilidad se paga pero no
 //!   suma. Cada trabajo suma como máximo `max_por_trabajo`. Las evaluaciones de Budi
 //!   suman como máximo `tope_evaluacion` en total, para que no carguen el puntaje.
+//! - **El silencio no traba el pago.** El cliente tiene un plazo de revisión después
+//!   de la entrega. Si no acepta ni responde en ese plazo, el humano cobra y el equipo
+//!   suma como si hubiera aceptado.
 //! - **Vigencia.** Los puntos vencen. Sin trabajo reciente, el puntaje baja solo.
 //! - **Anular es aparte de vencer.** Budi puede anular los puntos de un trabajo
 //!   (fraude o daño) con un motivo público.
@@ -45,6 +48,8 @@ pub struct Habilidad {
     pub vigencia: u64,
     /// Puntos máximos que pueden venir de evaluaciones de Budi, en total.
     pub tope_evaluacion: u32,
+    /// Segundos que tiene el cliente para revisar una entrega. Después, el humano cobra.
+    pub revision: u64,
 }
 
 #[contracttype]
@@ -63,7 +68,8 @@ pub enum Estado {
     EnCustodia = 0,
     /// El equipo entregó; falta que el cliente acepte.
     Entregado = 1,
-    /// El cliente aceptó: el humano cobró y el equipo sumó puntos.
+    /// El cliente aceptó, o no respondió en el plazo de revisión: el humano cobró y
+    /// el equipo sumó puntos.
     Pagado = 2,
     /// Venció el plazo sin entrega: el cliente recuperó su pago.
     Reembolsado = 3,
@@ -82,6 +88,8 @@ pub struct Trabajo {
     pub limite: u64,
     /// Enlace o hash de lo entregado, para que Budi lo pueda revisar.
     pub prueba: String,
+    /// Momento (segundos unix) en que vence la revisión del cliente; 0 antes de entregar.
+    pub revisar_hasta: u64,
     pub puntos: u32,
     pub estado: Estado,
 }
@@ -205,6 +213,14 @@ pub struct Reembolsado {
 
 #[contractevent]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CobradoSinRespuesta {
+    #[topic]
+    pub id: u32,
+    pub monto: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PuntosAnulados {
     #[topic]
     pub equipo: u32,
@@ -234,7 +250,11 @@ impl Reputacion {
     /// Crea o cambia las reglas de una habilidad. Solo el admin.
     pub fn definir_habilidad(env: Env, habilidad: Symbol, reglas: Habilidad) -> Result<(), Error> {
         Self::admin(env.clone()).require_auth();
-        if reglas.piso <= 0 || reglas.max_por_trabajo == 0 || reglas.vigencia == 0 {
+        if reglas.piso <= 0
+            || reglas.max_por_trabajo == 0
+            || reglas.vigencia == 0
+            || reglas.revision == 0
+        {
             return Err(Error::ReglasInvalidas);
         }
         Self::poner(&env, &Clave::Habilidad(habilidad), &reglas);
@@ -316,6 +336,7 @@ impl Reputacion {
             monto,
             limite: env.ledger().timestamp() + plazo,
             prueba: String::from_str(&env, ""),
+            revisar_hasta: 0,
             puntos: 0,
             estado: Estado::EnCustodia,
         };
@@ -345,7 +366,9 @@ impl Reputacion {
         if prueba.is_empty() {
             return Err(Error::PruebaVacia);
         }
+        let reglas = Self::habilidad(env.clone(), t.habilidad.clone())?;
         t.prueba = prueba.clone();
+        t.revisar_hasta = env.ledger().timestamp() + reglas.revision;
         t.estado = Estado::Entregado;
         Self::poner(&env, &Clave::Trabajo(trabajo), &t);
         Entregado {
@@ -360,11 +383,36 @@ impl Reputacion {
     /// suma puntos en la habilidad si el pago llega al piso y el humano todavía tiene
     /// la insignia. Regresa los puntos.
     pub fn aceptar(env: Env, trabajo: u32) -> Result<u32, Error> {
-        let mut t = Self::trabajo(env.clone(), trabajo)?;
+        let t = Self::trabajo(env.clone(), trabajo)?;
         t.cliente.require_auth();
         if t.estado != Estado::Entregado {
             return Err(Error::EstadoInvalido);
         }
+        Self::pagar(&env, trabajo, t)
+    }
+
+    /// El cliente no aceptó ni respondió en el plazo de revisión: el humano cobra el
+    /// pago en custodia y el equipo suma como si el cliente hubiera aceptado. Firma el
+    /// humano. Regresa los puntos.
+    pub fn cobrar_sin_respuesta(env: Env, trabajo: u32) -> Result<u32, Error> {
+        let t = Self::trabajo(env.clone(), trabajo)?;
+        Self::equipo(env.clone(), t.equipo)?.humano.require_auth();
+        if t.estado != Estado::Entregado {
+            return Err(Error::EstadoInvalido);
+        }
+        if env.ledger().timestamp() < t.revisar_hasta {
+            return Err(Error::PlazoNoVencido);
+        }
+        let monto = t.monto;
+        let puntos = Self::pagar(&env, trabajo, t)?;
+        CobradoSinRespuesta { id: trabajo, monto }.publish(&env);
+        Ok(puntos)
+    }
+
+    /// Paga al humano un trabajo entregado y suma sus puntos (si llega al piso y el
+    /// humano todavía tiene la insignia).
+    fn pagar(env: &Env, trabajo: u32, mut t: Trabajo) -> Result<u32, Error> {
+        let env = env.clone();
         let e = Self::equipo(env.clone(), t.equipo)?;
         let reglas = Self::habilidad(env.clone(), t.habilidad.clone())?;
         let por_monto = t.monto / reglas.piso;

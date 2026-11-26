@@ -23,7 +23,7 @@ fn soroban() -> Symbol {
 }
 
 /// Piso de 10 XLM por punto, máximo 5 puntos por trabajo, puntos de 1 año,
-/// y las evaluaciones suman hasta 3 puntos en total.
+/// las evaluaciones suman hasta 3 puntos en total y el cliente tiene 3 días para revisar.
 fn caso() -> Caso {
     let env = Env::default();
     env.mock_all_auths();
@@ -48,6 +48,7 @@ fn caso() -> Caso {
             max_por_trabajo: 5,
             vigencia: 365 * DIA,
             tope_evaluacion: 3,
+            revision: 3 * DIA,
         },
     );
     let token = token::Client::new(&env, &sac.address());
@@ -241,6 +242,7 @@ fn reglas_invalidas_no_se_guardan() {
         max_por_trabajo: 5,
         vigencia: DIA,
         tope_evaluacion: 3,
+        revision: DIA,
     };
     assert_eq!(
         c.r.try_definir_habilidad(&symbol_short!("rust"), &mala),
@@ -263,4 +265,48 @@ fn si_le_revocan_la_insignia_a_media_obra_se_paga_pero_no_suma() {
     assert_eq!(c.r.aceptar(&t), 0);
     assert_eq!(c.token.balance(&c.humano), 30 * XLM);
     assert_eq!(c.r.puntaje(&equipo, &soroban()).puntos, 0);
+}
+
+#[test]
+fn si_el_cliente_no_responde_el_humano_cobra_al_vencer_la_revision() {
+    let (c, equipo) = con_equipo();
+    let t =
+        c.r.contratar(&c.cliente, &equipo, &soroban(), &(30 * XLM), &DIA);
+    c.r.entregar(&t, &prueba(&c));
+    assert_eq!(
+        c.r.try_cobrar_sin_respuesta(&t),
+        Err(Ok(Error::PlazoNoVencido))
+    );
+    c.env.ledger().with_mut(|l| l.timestamp += 3 * DIA);
+    assert_eq!(c.r.cobrar_sin_respuesta(&t), 3);
+    assert_eq!(c.token.balance(&c.humano), 30 * XLM);
+    assert_eq!(c.token.balance(&c.r.address), 0);
+    assert_eq!(c.r.trabajo(&t).estado, Estado::Pagado);
+    assert_eq!(c.r.puntaje(&equipo, &soroban()).puntos, 3);
+    assert_eq!(c.r.try_aceptar(&t), Err(Ok(Error::EstadoInvalido)));
+}
+
+#[test]
+fn no_se_cobra_sin_entrega_y_el_cliente_puede_aceptar_despues_de_la_revision() {
+    let (c, equipo) = con_equipo();
+    let t =
+        c.r.contratar(&c.cliente, &equipo, &soroban(), &(30 * XLM), &DIA);
+    c.env.ledger().with_mut(|l| l.timestamp += 10 * DIA);
+    assert_eq!(
+        c.r.try_cobrar_sin_respuesta(&t),
+        Err(Ok(Error::EstadoInvalido))
+    );
+    let otro =
+        c.r.contratar(&c.cliente, &equipo, &soroban(), &(20 * XLM), &DIA);
+    c.r.entregar(&otro, &prueba(&c));
+    assert_eq!(
+        c.r.trabajo(&otro).revisar_hasta,
+        c.env.ledger().timestamp() + 3 * DIA
+    );
+    c.env.ledger().with_mut(|l| l.timestamp += 5 * DIA);
+    assert_eq!(c.r.aceptar(&otro), 2);
+    assert_eq!(
+        c.r.try_cobrar_sin_respuesta(&otro),
+        Err(Ok(Error::EstadoInvalido))
+    );
 }

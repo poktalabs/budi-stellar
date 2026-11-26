@@ -89,6 +89,14 @@
                     },
                     {
                       "key": {
+                        "symbol": "revision"
+                      },
+                      "val": {
+                        "u64": "259200"
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "tope_evaluacion"
                       },
                       "val": {
@@ -1022,6 +1030,14 @@
                   },
                   {
                     "key": {
+                      "symbol": "revision"
+                    },
+                    "val": {
+                      "u64": "259200"
+                    }
+                  },
+                  {
+                    "key": {
                       "symbol": "tope_evaluacion"
                     },
                     "val": {
@@ -1186,6 +1202,14 @@
                     "val": {
                       "u32": 0
                     }
+                  },
+                  {
+                    "key": {
+                      "symbol": "revisar_hasta"
+                    },
+                    "val": {
+                      "u64": "1259200"
+                    }
                   }
                 ]
               }
@@ -1277,6 +1301,14 @@
                     },
                     "val": {
                       "u32": 2
+                    }
+                  },
+                  {
+                    "key": {
+                      "symbol": "revisar_hasta"
+                    },
+                    "val": {
+                      "u64": "1259200"
                     }
                   }
                 ]
