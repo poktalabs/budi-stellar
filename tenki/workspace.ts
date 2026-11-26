@@ -129,7 +129,65 @@ const EDITOR_SETTINGS = {
   "chat.disableAIFeatures": true,
   "workbench.secondarySideBar.defaultVisibility": "hidden",
   "telemetry.telemetryLevel": "off",
+  // Lets the project's folder-open task start the Budi agent in a terminal.
+  "task.allowAutomaticTasks": "on",
+  // The conversation with the agent is the main surface, so its panel opens big.
+  "workbench.panel.opensMaximized": "always",
 };
+
+export interface Agente {
+  /** OpenAI-compatible base URL of Budi's model proxy (ends in /v1). */
+  baseUrl: string;
+  /** This workspace's proxy token: worth one capped budget, nothing more. */
+  token: string;
+  model: string;
+  /** The tutor's instructions (tenki/agente/APPEND_SYSTEM.md). */
+  instrucciones: string;
+}
+
+/**
+ * The learner's Budi agent: Pi, pointed at Budi's model proxy, with the tutor's
+ * instructions, opening in a terminal when the editor loads. Call before startIde.
+ */
+export async function configureAgent(ws: Workspace, a: Agente): Promise<void> {
+  const models = {
+    providers: {
+      budi: {
+        name: "Budi",
+        baseUrl: a.baseUrl,
+        api: "openai-completions",
+        apiKey: a.token,
+        compat: { supportsDeveloperRole: false },
+        models: [{ id: a.model, name: "Budi", reasoning: true, contextWindow: 256_000, maxTokens: 32_768 }],
+      },
+    },
+  };
+  const settings = { defaultProvider: "budi", defaultModel: a.model, defaultProjectTrust: "always" };
+  await ws.session.writeFile(".pi/agent/models.json", JSON.stringify(models, null, 2));
+  await ws.session.writeFile(".pi/agent/settings.json", JSON.stringify(settings, null, 2));
+  await ws.session.writeFile(".pi/agent/APPEND_SYSTEM.md", a.instrucciones);
+  // The starter is this repo, whose AGENTS.md is for contributors, not learners.
+  await ws.session.writeFile(
+    `${LAYOUT.projectRel}/AGENTS.override.md`,
+    "Este es el proyecto de un alumno de Budi para Stellar. Sigue las instrucciones de Budi de tu prompt de sistema.\n",
+  );
+  const tasks = {
+    version: "2.0.0",
+    tasks: [
+      {
+        label: "Budi",
+        type: "shell",
+        command: `${LAYOUT.home}/.local/bin/pi`,
+        options: { env: { PATH: `${LAYOUT.home}/.cargo/bin:${LAYOUT.home}/.local/bin:\${env:PATH}` } },
+        runOptions: { runOn: "folderOpen" },
+        presentation: { reveal: "always", panel: "dedicated", focus: true },
+        isBackground: true,
+        problemMatcher: [],
+      },
+    ],
+  };
+  await ws.session.writeFile(`${LAYOUT.projectRel}/.vscode/tasks.json`, JSON.stringify(tasks, null, 2));
+}
 
 /**
  * code-server on the project, exposed as a preview URL. With a password by

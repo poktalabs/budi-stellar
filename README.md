@@ -72,6 +72,8 @@ En [stellar.budi.lat/aula](https://stellar.budi.lat/aula/) hay un escritorio con
 
 El editor: entras con tu cuenta de Budi, abres tu workspace y en menos de un minuto aparece VS Code de tu sesión dentro de la ventana. Tienes uno a la vez, con tiempo límite, y lo apagas desde la misma ventana. Lo abre el servicio de `server/` (`pnpm server`), que revisa tu sesión de Budi y llama a `openWorkspace`.
 
+Tu agente Budi abre solo en la terminal del editor. Es [Pi](https://pi.dev) sobre un modelo de Nebius, con las instrucciones de `tenki/agente/APPEND_SYSTEM.md`: **el agente escribe todo el código y tú decides y explicas**. Antes de construir cada paso te pregunta qué quieres y por qué (quién puede llamar cada función, qué se guarda, qué puede salir mal), y anota tus respuestas en `EVIDENCIA.md`. Lo que se aprende aquí es arquitectura, seguridad y diseño, no a teclear código. El agente llama al modelo a través del servicio, con un token y un presupuesto por workspace: la llave de Nebius nunca entra a tu máquina.
+
 ## Paga con Stellar y te lo devolvemos al terminar: Matrícula
 
 Matrícula es un depósito de compromiso (skin in the game). El alumno deposita al inscribirse y el dinero se queda en el contrato. Si termina el curso a tiempo, Budi lo confirma y el depósito regresa completo al alumno. Si no termina antes del plazo, Budi se lo queda. Es un primer pago en Stellar que te regresa. Los probadores alfa entran gratis con un código de un solo uso. Bitácora, una vez configurada, solo deja registrar hitos a quien está inscrito.

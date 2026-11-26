@@ -16,6 +16,8 @@ export const REPO = "https://github.com/poktalabs/budi-stellar";
 export const RUST_VERSION = "1.92.0";
 export const STELLAR_CLI_VERSION = "30.0.1";
 export const CODE_SERVER_VERSION = "4.146.0";
+// The learner's Budi agent (same version as Budi's own sessions). Needs Node >= 22.19.
+export const PI_VERSION = "1.4.0";
 
 const ARCH = `case "$(uname -m)" in x86_64) A=x86_64; C=amd64;; aarch64|arm64) A=aarch64; C=arm64;; *) echo "unsupported arch $(uname -m)"; exit 1;; esac`;
 const CARGO_ENV = `. "$HOME/.cargo/env"`;
@@ -41,10 +43,14 @@ export function recipe(ref: string): TemplateSpec {
       `${ARCH}; mkdir -p "$HOME/.local/lib" && curl -fsSL "https://github.com/coder/code-server/releases/download/v${CODE_SERVER_VERSION}/code-server-${CODE_SERVER_VERSION}-linux-$C.tar.gz" | tar xz -C "$HOME/.local/lib" && mv "$HOME/.local/lib/code-server-${CODE_SERVER_VERSION}-linux-$C" "${LAYOUT.codeServer}" && ln -sf "${LAYOUT.codeServer}/bin/code-server" "$HOME/.local/bin/code-server"`,
       { name: "install-code-server", timeoutSeconds: 600 },
     )
+    .run(`npm install -g --prefix "$HOME/.local" @earendil-works/pi-coding-agent@${PI_VERSION}`, {
+      name: "install-pi",
+      timeoutSeconds: 600,
+    })
     // Builds and tests the starter once: proves the toolchain and leaves the
     // cargo registry warm, so a builder's first build is fast.
     .run(
-      `${CARGO_ENV}; export PATH="$HOME/.local/bin:$PATH"; rustc --version && stellar --version && code-server --version && cargo test && stellar contract build`,
+      `${CARGO_ENV}; export PATH="$HOME/.local/bin:$PATH"; node --version && pi --version && rustc --version && stellar --version && code-server --version && cargo test && stellar contract build`,
       { name: "verify", timeoutSeconds: 1800 },
     );
 }
