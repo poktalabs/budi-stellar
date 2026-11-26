@@ -310,3 +310,72 @@ fn no_se_cobra_sin_entrega_y_el_cliente_puede_aceptar_despues_de_la_revision() {
         Err(Ok(Error::EstadoInvalido))
     );
 }
+
+fn motivo(c: &Caso, texto: &str) -> String {
+    String::from_str(&c.env, texto)
+}
+
+#[test]
+fn una_disputa_congela_el_pago_y_budi_le_da_la_razon_al_cliente() {
+    let (c, equipo) = con_equipo();
+    let t =
+        c.r.contratar(&c.cliente, &equipo, &soroban(), &(30 * XLM), &DIA);
+    c.r.entregar(&t, &prueba(&c));
+    assert_eq!(
+        c.r.try_disputar(&t, &motivo(&c, "")),
+        Err(Ok(Error::MotivoVacio))
+    );
+    c.r.disputar(&t, &motivo(&c, "El contrato no compila"));
+    assert_eq!(c.r.trabajo(&t).estado, Estado::Disputado);
+    c.env.ledger().with_mut(|l| l.timestamp += 10 * DIA);
+    assert_eq!(
+        c.r.try_cobrar_sin_respuesta(&t),
+        Err(Ok(Error::EstadoInvalido))
+    );
+    assert_eq!(
+        c.r.resolver(&t, &false, &motivo(&c, "Revisamos: no compila")),
+        0
+    );
+    assert_eq!(c.token.balance(&c.cliente), 1_000 * XLM);
+    assert_eq!(c.token.balance(&c.humano), 0);
+    assert_eq!(c.r.trabajo(&t).estado, Estado::Reembolsado);
+    assert_eq!(c.r.puntaje(&equipo, &soroban()).puntos, 0);
+}
+
+#[test]
+fn budi_le_da_la_razon_al_equipo_y_el_equipo_suma() {
+    let (c, equipo) = con_equipo();
+    let t =
+        c.r.contratar(&c.cliente, &equipo, &soroban(), &(30 * XLM), &DIA);
+    assert_eq!(
+        c.r.try_resolver(&t, &true, &motivo(&c, "x")),
+        Err(Ok(Error::EstadoInvalido))
+    );
+    c.r.entregar(&t, &prueba(&c));
+    c.r.disputar(&t, &motivo(&c, "No era lo pedido"));
+    assert_eq!(c.r.resolver(&t, &true, &motivo(&c, "Cumple lo pedido")), 3);
+    assert_eq!(c.token.balance(&c.humano), 30 * XLM);
+    assert_eq!(c.r.puntaje(&equipo, &soroban()).puntos, 3);
+    assert_eq!(
+        c.r.try_resolver(&t, &false, &motivo(&c, "otra vez")),
+        Err(Ok(Error::EstadoInvalido))
+    );
+}
+
+#[test]
+fn no_se_disputa_despues_de_la_revision_y_el_cliente_puede_retirar_la_disputa() {
+    let (c, equipo) = con_equipo();
+    let a =
+        c.r.contratar(&c.cliente, &equipo, &soroban(), &(30 * XLM), &DIA);
+    c.r.entregar(&a, &prueba(&c));
+    c.r.disputar(&a, &motivo(&c, "Falta la prueba de carga"));
+    assert_eq!(c.r.aceptar(&a), 3);
+    let b =
+        c.r.contratar(&c.cliente, &equipo, &soroban(), &(20 * XLM), &DIA);
+    c.r.entregar(&b, &prueba(&c));
+    c.env.ledger().with_mut(|l| l.timestamp += 3 * DIA);
+    assert_eq!(
+        c.r.try_disputar(&b, &motivo(&c, "tarde")),
+        Err(Ok(Error::PlazoVencido))
+    );
+}

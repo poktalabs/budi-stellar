@@ -93,6 +93,7 @@ Reputación guarda la reputación de un equipo humano + agente Budi, una por hab
 - **La insignia abre la habilidad.** Para ganar puntos en una habilidad, el humano del equipo necesita su insignia (contrato `insignias`). La insignia nunca suma puntos.
 - **Solo cuenta el trabajo pagado y entregado.** Un cliente contrata al equipo y su pago queda en custodia. El equipo entrega con una prueba (un enlace o un hash). Cuando el cliente acepta, el pago pasa al humano y el equipo suma puntos.
 - **El silencio no traba el pago.** Después de la entrega, el cliente tiene un plazo de revisión. Si no acepta ni responde, el humano cobra y el equipo suma como si hubiera aceptado.
+- **El cliente puede disputar.** Dentro del plazo de revisión, el cliente puede rechazar la entrega con un motivo. El pago se congela y Budi decide, con un motivo público: le paga al humano (y el equipo suma) o le regresa el pago al cliente (y nadie suma).
 - **Piso y tope.** Un trabajo por debajo del piso se paga pero no suma. Cada trabajo suma como máximo un tope. Las evaluaciones de Budi también suman, con un tope total para que no carguen el puntaje.
 - **Los puntos vencen.** Sin trabajo reciente, el puntaje baja solo.
 - **Anular es aparte de vencer.** Budi puede anular los puntos de un trabajo, con un motivo público.
@@ -105,14 +106,16 @@ Reputación guarda la reputación de un equipo humano + agente Budi, una por hab
 | `retirar(equipo)` | El humano retira a su agente: no más trabajos nuevos, el historial se queda. |
 | `contratar(cliente, equipo, habilidad, monto, plazo)` | El cliente paga y el pago queda en custodia. Pide la insignia de la habilidad. |
 | `entregar(trabajo, prueba)` | El humano entrega antes del plazo, con una prueba. |
-| `aceptar(trabajo)` | El cliente acepta: el pago pasa al humano y el equipo suma puntos. |
+| `aceptar(trabajo)` | El cliente acepta (o retira su disputa): el pago pasa al humano y el equipo suma puntos. |
 | `cobrar_sin_respuesta(trabajo)` | Venció la revisión y el cliente no respondió: el humano cobra y el equipo suma puntos. |
+| `disputar(trabajo, motivo)` | El cliente rechaza la entrega dentro del plazo de revisión; el pago se congela. |
+| `resolver(trabajo, paga_al_equipo, motivo)` | Budi resuelve la disputa: cobra el humano y el equipo suma, o el cliente recupera su pago. |
 | `reembolsar(trabajo)` | Venció el plazo sin entrega: el cliente recupera su pago. |
 | `evaluar(equipo, habilidad, puntos)` | Budi suma puntos por una evaluación calificada, con tope. |
 | `anular(trabajo, motivo)` | Budi anula los puntos de un trabajo, con motivo público. |
 | `puntaje(equipo, habilidad)` | Puntos vigentes, trabajos que cuentan y puntos por evaluación. |
 
-En testnet (25 de noviembre de 2026), con XLM: Reputación [`CC4PRNDA...2AVK`](https://stellar.expert/explorer/testnet/contract/CC4PRNDAP4LH6EUFIBAEPY5BA2T4GMLPCEM546U5KTLOKDV6H2RQ2AVK), con la habilidad `soroban` abierta por la insignia `soroban_101` de Insignias [`CDRJ6CXB...2QPAY`](https://stellar.expert/explorer/testnet/contract/CDRJ6CXBFDOUZBKHGOXCZ6W5TVCIUYIF4T5X6WSJ27ACQJRPYOX2QPAY). El equipo 1 hizo un trabajo de 30 XLM (3 puntos), recibió una evaluación (2 puntos) y un segundo trabajo se anuló en una auditoría de prueba. En un tercer trabajo de 40 XLM el cliente no respondió: al vencer la revisión, el humano cobró y el equipo sumó 4 puntos. Puntaje: 9.
+En testnet (25 de noviembre de 2026), con XLM: Reputación [`CCNHF6DU...SFCL`](https://stellar.expert/explorer/testnet/contract/CCNHF6DUBUDY5MG2AQYXZU4OHHG2NXWVIFDZQLG4Z3XDJ4N5KFDASFCL), con la habilidad `soroban` abierta por la insignia `soroban_101` de Insignias [`CDRJ6CXB...2QPAY`](https://stellar.expert/explorer/testnet/contract/CDRJ6CXBFDOUZBKHGOXCZ6W5TVCIUYIF4T5X6WSJ27ACQJRPYOX2QPAY). Dos trabajos del equipo 1 terminaron en disputa: en el primero (30 XLM) Budi le dio la razón al equipo, que cobró y sumó 3 puntos; en el segundo (20 XLM) se la dio al cliente, que recuperó su pago. El despliegue anterior [`CC4PRNDA...2AVK`](https://stellar.expert/explorer/testnet/contract/CC4PRNDAP4LH6EUFIBAEPY5BA2T4GMLPCEM546U5KTLOKDV6H2RQ2AVK) tiene el resto de las funciones en uso: contratar, entregar, aceptar, cobrar sin respuesta, reembolsar, evaluar, anular y retirar.
 
 Pendiente: la ventana de apelación antes de anular, y quién firma por el agente cuando use una cuenta con passkey.
 

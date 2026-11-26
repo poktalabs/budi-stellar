@@ -14,6 +14,9 @@
 //! - **El silencio no traba el pago.** El cliente tiene un plazo de revisión después
 //!   de la entrega. Si no acepta ni responde en ese plazo, el humano cobra y el equipo
 //!   suma como si hubiera aceptado.
+//! - **El cliente puede disputar.** Dentro del plazo de revisión, el cliente puede
+//!   rechazar la entrega con un motivo. El pago se congela y Budi decide: paga al
+//!   humano (y el equipo suma) o le regresa el pago al cliente (y nadie suma).
 //! - **Vigencia.** Los puntos vencen. Sin trabajo reciente, el puntaje baja solo.
 //! - **Anular es aparte de vencer.** Budi puede anular los puntos de un trabajo
 //!   (fraude o daño) con un motivo público.
@@ -71,10 +74,13 @@ pub enum Estado {
     /// El cliente aceptó, o no respondió en el plazo de revisión: el humano cobró y
     /// el equipo sumó puntos.
     Pagado = 2,
-    /// Venció el plazo sin entrega: el cliente recuperó su pago.
+    /// El cliente recuperó su pago: venció el plazo sin entrega, o Budi le dio la
+    /// razón en una disputa.
     Reembolsado = 3,
     /// Budi anuló los puntos de este trabajo.
     Anulado = 4,
+    /// El cliente rechazó la entrega; el pago está congelado hasta que Budi resuelva.
+    Disputado = 5,
 }
 
 #[contracttype]
@@ -152,6 +158,7 @@ pub enum Error {
     PuntosInvalidos = 12,
     MismaCuenta = 13,
     PruebaVacia = 14,
+    MotivoVacio = 15,
 }
 
 #[contractevent]
@@ -217,6 +224,24 @@ pub struct CobradoSinRespuesta {
     #[topic]
     pub id: u32,
     pub monto: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Disputado {
+    #[topic]
+    pub id: u32,
+    pub motivo: String,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DisputaResuelta {
+    #[topic]
+    pub id: u32,
+    /// `true` si Budi le dio la razón al equipo (cobra el humano).
+    pub paga_al_equipo: bool,
+    pub motivo: String,
 }
 
 #[contractevent]
@@ -381,11 +406,11 @@ impl Reputacion {
 
     /// El cliente acepta lo entregado: el pago pasa al humano del equipo y el equipo
     /// suma puntos en la habilidad si el pago llega al piso y el humano todavía tiene
-    /// la insignia. Regresa los puntos.
+    /// la insignia. También sirve para retirar una disputa. Regresa los puntos.
     pub fn aceptar(env: Env, trabajo: u32) -> Result<u32, Error> {
         let t = Self::trabajo(env.clone(), trabajo)?;
         t.cliente.require_auth();
-        if t.estado != Estado::Entregado {
+        if t.estado != Estado::Entregado && t.estado != Estado::Disputado {
             return Err(Error::EstadoInvalido);
         }
         Self::pagar(&env, trabajo, t)
@@ -431,6 +456,64 @@ impl Reputacion {
         if puntos > 0 {
             Self::sumar(&env, t.equipo, &t.habilidad, &reglas, trabajo, puntos);
         }
+        Ok(puntos)
+    }
+
+    /// El cliente rechaza la entrega, dentro del plazo de revisión, con un motivo
+    /// público. El pago queda congelado hasta que Budi resuelva.
+    pub fn disputar(env: Env, trabajo: u32, motivo: String) -> Result<(), Error> {
+        let mut t = Self::trabajo(env.clone(), trabajo)?;
+        t.cliente.require_auth();
+        if t.estado != Estado::Entregado {
+            return Err(Error::EstadoInvalido);
+        }
+        if env.ledger().timestamp() >= t.revisar_hasta {
+            return Err(Error::PlazoVencido);
+        }
+        if motivo.is_empty() {
+            return Err(Error::MotivoVacio);
+        }
+        t.estado = Estado::Disputado;
+        Self::poner(&env, &Clave::Trabajo(trabajo), &t);
+        Disputado {
+            id: trabajo,
+            motivo,
+        }
+        .publish(&env);
+        Ok(())
+    }
+
+    /// Budi resuelve una disputa con un motivo público. Si le da la razón al equipo,
+    /// el humano cobra y el equipo suma como si el cliente hubiera aceptado; si no, el
+    /// cliente recupera su pago y nadie suma. Solo el admin. Regresa los puntos.
+    pub fn resolver(
+        env: Env,
+        trabajo: u32,
+        paga_al_equipo: bool,
+        motivo: String,
+    ) -> Result<u32, Error> {
+        Self::admin(env.clone()).require_auth();
+        let mut t = Self::trabajo(env.clone(), trabajo)?;
+        if t.estado != Estado::Disputado {
+            return Err(Error::EstadoInvalido);
+        }
+        if motivo.is_empty() {
+            return Err(Error::MotivoVacio);
+        }
+        let puntos = if paga_al_equipo {
+            Self::pagar(&env, trabajo, t)?
+        } else {
+            t.estado = Estado::Reembolsado;
+            Self::poner(&env, &Clave::Trabajo(trabajo), &t);
+            Self::token(&env).transfer(&env.current_contract_address(), &t.cliente, &t.monto);
+            0
+        };
+        DisputaResuelta {
+            id: trabajo,
+            paga_al_equipo,
+            motivo,
+        }
+        .publish(&env);
         Ok(puntos)
     }
 
