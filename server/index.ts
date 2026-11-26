@@ -45,7 +45,8 @@ const origins = (process.env.ORIGINS ?? "https://stellar.budi.lat,http://localho
 
 const app = new Hono<{ Variables: { persona: string } }>();
 app.use("*", cors({ origin: origins, allowHeaders: ["Authorization", "Content-Type"], allowMethods: ["GET", "POST", "DELETE"] }));
-app.get("/", (c) => c.text("budi-stellar"));
+// People who land here by hand go to the aula; the aula and the agent use the routes below.
+app.get("/", (c) => c.redirect("https://stellar.budi.lat/aula/"));
 app.get("/healthz", (c) => c.text("ok"));
 
 app.use("/workspace", async (c, next) => {
