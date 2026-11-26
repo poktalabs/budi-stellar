@@ -82,6 +82,14 @@ export async function openWorkspace(opts: OpenOptions): Promise<Workspace> {
       // The starter keeps its warm target dir, so the first build is quick.
       const r = await session.exec("cp", { args: ["-a", LAYOUT.starter, LAYOUT.project], timeoutMs: 120_000 });
       if (r.exitCode !== 0) throw new Error(`copy starter failed: ${stderrText(r)}`);
+      // The starter is this whole repo; the learner's project keeps only the
+      // lesson (Bitácora, plus Matrícula for its tests; the Rust and Stellar
+      // setup; the warm build cache).
+      const t = await session.exec("bash", {
+        args: ["-c", `cd ${LAYOUT.project} && find . -mindepth 1 -maxdepth 1 ! -name .cargo ! -name Cargo.toml ! -name Cargo.lock ! -name rust-toolchain.toml ! -name contracts ! -name target ! -name LICENSE -exec rm -rf {} + && find contracts -mindepth 1 -maxdepth 1 ! -name bitacora ! -name matricula -exec rm -rf {} +`],
+        timeoutMs: 60_000,
+      });
+      if (t.exitCode !== 0) throw new Error(`trim starter failed: ${stderrText(t)}`);
     }
     return { sessionId: session.id, session, tenki, fromStarter: !repo };
   } catch (err) {
@@ -162,7 +170,8 @@ export async function configureAgent(ws: Workspace, a: Agente): Promise<void> {
       },
     },
   };
-  const settings = { defaultProvider: "budi", defaultModel: a.model, defaultProjectTrust: "always" };
+  // The learner sees the conversation, not the model's reasoning or Pi's startup listing.
+  const settings = { defaultProvider: "budi", defaultModel: a.model, defaultProjectTrust: "always", hideThinkingBlock: true, quietStartup: true };
   await ws.session.writeFile(".pi/agent/models.json", JSON.stringify(models, null, 2));
   await ws.session.writeFile(".pi/agent/settings.json", JSON.stringify(settings, null, 2));
   await ws.session.writeFile(".pi/agent/APPEND_SYSTEM.md", a.instrucciones);
@@ -178,7 +187,8 @@ export async function configureAgent(ws: Workspace, a: Agente): Promise<void> {
         label: "Budi",
         type: "shell",
         command: `${LAYOUT.home}/.local/bin/pi`,
-        options: { env: { PATH: `${LAYOUT.home}/.cargo/bin:${LAYOUT.home}/.local/bin:\${env:PATH}` } },
+        // Pi is pinned to the image; the learner never sees an "update available" notice.
+        options: { env: { PATH: `${LAYOUT.home}/.cargo/bin:${LAYOUT.home}/.local/bin:\${env:PATH}`, PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0" } },
         runOptions: { runOn: "folderOpen" },
         presentation: { reveal: "always", panel: "dedicated", focus: true },
         isBackground: true,

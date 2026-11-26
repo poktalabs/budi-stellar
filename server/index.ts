@@ -46,6 +46,7 @@ const origins = (process.env.ORIGINS ?? "https://stellar.budi.lat,http://localho
 const app = new Hono<{ Variables: { persona: string } }>();
 app.use("*", cors({ origin: origins, allowHeaders: ["Authorization", "Content-Type"], allowMethods: ["GET", "POST", "DELETE"] }));
 app.get("/", (c) => c.text("budi-stellar"));
+app.get("/healthz", (c) => c.text("ok"));
 
 app.use("/workspace", async (c, next) => {
   const token = c.req.header("Authorization")?.replace(/^Bearer /, "");
@@ -73,4 +74,6 @@ app.post("/llm/v1/chat/completions", async (c) => {
 });
 
 const port = Number(process.env.PORT ?? 8787);
+// Railway sends SIGTERM on redeploy; open workspaces close on their own at their time limit.
+process.on("SIGTERM", () => process.exit(0));
 serve({ fetch: app.fetch, port }, () => console.log(`budi-stellar service on :${port}`));
