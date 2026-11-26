@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bóveda · Budi para Stellar</title>
+<link rel="icon" href="/brand/logo.svg">
+<link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <a class="home" href="/"><img src="/brand/logo.svg" alt=""><span class="word">Budi</span><span class="for">para Stellar</span></a>
+  <span class="net">Testnet</span>
+</div></header>
+
+<main class="wrap">
+  <section class="hero">
+    <div class="kick">Bono de bienvenida</div>
+    <h1>La bóveda de Budi</h1>
+    <p class="lead">Hay <b id="saldo">…</b> de testnet guardados en un contrato. Se abren con un código: quien lo escriba se lleva todo lo que haya dentro. El contrato guarda solo una huella del código, nunca el código.</p>
+    <p class="out" id="out-boveda"></p>
+  </section>
+
+  <ol class="steps">
+    <li class="step" id="paso-wallet">
+      <div class="n">1</div>
+      <div class="body">
+        <h2>Conecta tu wallet</h2>
+        <p>Usa <a href="https://www.freighter.app" target="_blank" rel="noopener">Freighter</a> en Testnet. Es dinero de prueba.</p>
+        <div class="row">
+          <button class="btn primary" id="conectar">Conectar wallet</button>
+          <button class="btn ghost" id="fondear" hidden>Activar mi cuenta en testnet</button>
+        </div>
+        <p class="out" id="out-wallet"></p>
+      </div>
+    </li>
+
+    <li class="step off" id="paso-reclamar">
+      <div class="n">2</div>
+      <div class="body">
+        <h2>Escribe el código y reclama</h2>
+        <p>Firmas en Freighter y los XLM llegan a tu wallet en segundos.</p>
+        <div class="row">
+          <input id="codigo" placeholder="Tu código" autocomplete="off" disabled>
+          <button class="btn primary" id="reclamar" disabled>Abrir la bóveda</button>
+        </div>
+        <p class="out" id="out-reclamar"></p>
+      </div>
+    </li>
+  </ol>
+
+  <p class="hand">Todo corre en Stellar testnet. <span id="contrato"></span>El contrato y este código están en <a href="https://github.com/poktalabs/budi-stellar">github.com/poktalabs/budi-stellar</a>.</p>
+</main>
+<script type="module" src="/src/boveda.ts"></script>
+</body>
+</html>

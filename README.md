@@ -90,6 +90,17 @@ Esta versión del depósito todavía no está en testnet: primero va el curso. L
 | `cobrar(id)` | Venció el plazo sin terminar: el depósito pasa al admin. Firma el admin. |
 | `inscrito(alumno, curso)` | Si el alumno está en el curso (depósito en custodia o curso terminado). |
 
+## Un bono que se abre con un código: Bóveda
+
+`contracts/boveda` guarda XLM y se los da a quien presente el código correcto. Budi la llena con `depositar`; quien escriba el código en https://stellar.budi.lat/boveda/ (o llame `reclamar`) se lleva todo lo que haya dentro, una vez por wallet. El contrato guarda solo el sha256 del código normalizado (minúsculas, sin espacios), nunca el código. Sirve como bono de bienvenida o premio para quien termina una lección. Nació en el reto exprés de Ship It del 26 de noviembre (5555 XLM de testnet, código «Ship It»).
+
+```bash
+cargo test -p boveda
+stellar contract build --package boveda
+```
+
+La página es `web/boveda/` (`pnpm boveda:build`) y lee el id del contrato de `/boveda/contrato.json`.
+
 ## Reputación por habilidad: Reputación
 
 Reputación guarda la reputación de un equipo humano + agente Budi, una por habilidad (por ejemplo, contratos Soroban). Las reglas siguen el modelo de los consejos médicos: la insignia es la licencia y el puntaje es el certificado que vence.

@@ -7,3 +7,4 @@ node_modules/
 *.wasm
 .DS_Store
 web/dist/
+web/dist-boveda/
