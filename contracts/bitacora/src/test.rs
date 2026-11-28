@@ -336,3 +336,135 @@ fn sin_firma_no_vacia() {
     env.set_auths(&[]);
     client.vaciar_bitacora(&b);
 }
+
+#[test]
+fn registra_un_lote_de_hitos_en_orden() {
+    let (env, client) = setup();
+    env.mock_all_auths();
+    let b = Address::generate(&env);
+    let lote = vec![&env, String::from_str(&env, "Uno"), String::from_str(&env, "Dos")];
+    assert_eq!(client.registrar_lote(&b, &lote), 2);
+    assert_eq!(client.hitos(&b), lote);
+    assert_eq!(client.try_registrar_lote(&b, &Vec::new(&env)), Err(Ok(Error::LoteVacio)));
+    let malo = vec![&env, String::from_str(&env, "Tres"), String::from_str(&env, "")];
+    assert_eq!(client.try_registrar_lote(&b, &malo), Err(Ok(Error::HitoVacio)));
+    assert_eq!(client.contar(&b), 2);
+}
+
+#[test]
+fn mover_hito_reordena_y_conserva_el_fijado() {
+    let (env, client) = setup();
+    env.mock_all_auths();
+    let b = Address::generate(&env);
+    let lote = vec![&env, String::from_str(&env, "A"), String::from_str(&env, "B"), String::from_str(&env, "C")];
+    client.registrar_lote(&b, &lote);
+    client.fijar_hito(&b, &2);
+    client.mover_hito(&b, &3, &1);
+    assert_eq!(
+        client.hitos(&b),
+        vec![&env, String::from_str(&env, "C"), String::from_str(&env, "A"), String::from_str(&env, "B")]
+    );
+    assert_eq!(client.fijado(&b), Some(3));
+    client.mover_hito(&b, &3, &1);
+    assert_eq!(client.fijado(&b), Some(1));
+    assert_eq!(client.try_mover_hito(&b, &0, &1), Err(Ok(Error::HitoInexistente)));
+    assert_eq!(client.try_mover_hito(&b, &1, &4), Err(Ok(Error::HitoInexistente)));
+}
+
+#[test]
+fn el_agente_vinculado_anota_y_otro_no() {
+    let (env, client) = setup();
+    env.mock_all_auths();
+    let b = Address::generate(&env);
+    let agente = Address::generate(&env);
+    let intruso = Address::generate(&env);
+    let h = String::from_str(&env, "Contrato desplegado por mi agente");
+    assert_eq!(client.try_registrar_por_agente(&agente, &b, &h), Err(Ok(Error::AgenteNoVinculado)));
+    assert_eq!(client.try_vincular_agente(&b, &b), Err(Ok(Error::MismaCuenta)));
+    client.vincular_agente(&b, &agente);
+    assert_eq!(client.agente_de(&b), Some(agente.clone()));
+    assert_eq!(client.registrar_por_agente(&agente, &b, &h), 1);
+    assert_eq!(client.try_registrar_por_agente(&intruso, &b, &h), Err(Ok(Error::AgenteNoVinculado)));
+    assert_eq!(client.desvincular_agente(&b), agente);
+    assert_eq!(client.try_registrar_por_agente(&agente, &b, &h), Err(Ok(Error::AgenteNoVinculado)));
+    assert_eq!(client.try_desvincular_agente(&b), Err(Ok(Error::SinAgente)));
+}
+
+#[test]
+fn registrar_por_agente_pide_la_firma_del_agente() {
+    let (env, client) = setup();
+    let b = Address::generate(&env);
+    let agente = Address::generate(&env);
+    env.mock_all_auths();
+    client.vincular_agente(&b, &agente);
+    env.set_auths(&[]);
+    assert!(client.try_registrar_por_agente(&agente, &b, &String::from_str(&env, "x")).is_err());
+}
+
+#[test]
+fn la_bitacora_pasa_a_otra_cuenta_en_dos_pasos() {
+    let (env, client) = setup();
+    env.mock_all_auths();
+    let b = Address::generate(&env);
+    let nuevo = Address::generate(&env);
+    let otro = Address::generate(&env);
+    assert_eq!(client.try_ofrecer_bitacora(&b, &nuevo), Err(Ok(Error::BitacoraVacia)));
+    client.registrar_lote(&b, &vec![&env, String::from_str(&env, "A"), String::from_str(&env, "B")]);
+    client.fijar_hito(&b, &2);
+    client.vincular_agente(&b, &otro);
+    assert_eq!(client.try_ofrecer_bitacora(&b, &b), Err(Ok(Error::MismaCuenta)));
+    assert_eq!(client.try_aceptar_bitacora(&nuevo, &b), Err(Ok(Error::SinOferta)));
+    client.ofrecer_bitacora(&b, &nuevo);
+    assert_eq!(client.try_aceptar_bitacora(&otro, &b), Err(Ok(Error::SinOferta)));
+    assert_eq!(client.aceptar_bitacora(&nuevo, &b), 2);
+    assert_eq!(client.contar(&nuevo), 2);
+    assert_eq!(client.fijado(&nuevo), Some(2));
+    assert_eq!(client.contar(&b), 0);
+    assert_eq!(client.agente_de(&b), None);
+    assert_eq!(client.try_aceptar_bitacora(&nuevo, &b), Err(Ok(Error::SinOferta)));
+}
+
+#[test]
+fn no_acepta_si_el_destino_ya_tiene_hitos() {
+    let (env, client) = setup();
+    env.mock_all_auths();
+    let b = Address::generate(&env);
+    let nuevo = Address::generate(&env);
+    client.registrar(&b, &String::from_str(&env, "A"));
+    client.registrar(&nuevo, &String::from_str(&env, "Propio"));
+    client.ofrecer_bitacora(&b, &nuevo);
+    assert_eq!(client.try_aceptar_bitacora(&nuevo, &b), Err(Ok(Error::DestinoConHitos)));
+}
+
+#[test]
+fn el_admin_cambia_y_quita_el_acceso() {
+    let (env, client) = setup();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let m1 = Address::generate(&env);
+    let m2 = Address::generate(&env);
+    assert_eq!(client.try_cambiar_acceso(&m1, &symbol_short!("c1")), Err(Ok(Error::SinConfigurar)));
+    assert_eq!(client.try_quitar_acceso(), Err(Ok(Error::SinConfigurar)));
+    client.configurar(&admin, &m1, &symbol_short!("c1"));
+    client.cambiar_acceso(&m2, &symbol_short!("c2"));
+    assert_eq!(client.acceso(), Some(Acceso { matricula: m2.clone(), curso: symbol_short!("c2") }));
+    client.quitar_acceso();
+    assert_eq!(client.acceso(), None);
+    assert_eq!(client.try_configurar(&admin, &m1, &symbol_short!("c1")), Err(Ok(Error::YaConfigurada)));
+    let b = Address::generate(&env);
+    assert_eq!(client.registrar(&b, &String::from_str(&env, "Abierto")), 1);
+    client.cambiar_acceso(&m1, &symbol_short!("c1"));
+    assert_eq!(client.acceso().unwrap().matricula, m1);
+}
+
+#[test]
+fn cambiar_acceso_pide_la_firma_del_admin() {
+    let (env, client) = setup();
+    let admin = Address::generate(&env);
+    let m = Address::generate(&env);
+    env.mock_all_auths();
+    client.configurar(&admin, &m, &symbol_short!("c1"));
+    env.set_auths(&[]);
+    assert!(client.try_cambiar_acceso(&m, &symbol_short!("c2")).is_err());
+    assert!(client.try_quitar_acceso().is_err());
+}
