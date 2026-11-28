@@ -134,3 +134,40 @@ fn moderadores_renombrar_reabrir_editar_quitar_voto_y_borrar() {
     c.reabrir_grupo_estudio(&d, &g);
     assert!(!c.grupo(&g).unwrap().cerrado);
 }
+
+#[test]
+fn describir_privacidad_invitaciones_desaceptar_reportes_y_borrar_pregunta() {
+    let (env, c) = setup();
+    env.mock_all_auths();
+    let (d, ana, beto) = (Address::generate(&env), Address::generate(&env), Address::generate(&env));
+    let g = c.crear_grupo_estudio(&d, &s(&env, "G"), &false);
+    c.describir_grupo_estudio(&d, &g, &s(&env, "Martes 7 pm, nivel inicial"));
+    assert_eq!(c.descripcion_grupo(&g), Some(s(&env, "Martes 7 pm, nivel inicial")));
+    assert_eq!(c.try_describir_grupo_estudio(&ana, &g, &s(&env, "x")), Err(Ok(Error::NoEsDueno)));
+    c.cambiar_privacidad_grupo(&d, &g, &true);
+    assert_eq!(c.try_unirse_grupo_estudio(&ana, &g), Err(Ok(Error::SinInvitacion)));
+    c.invitar_a_grupo(&d, &g, &ana);
+    c.cancelar_invitacion_grupo(&d, &g, &ana);
+    assert_eq!(c.try_unirse_grupo_estudio(&ana, &g), Err(Ok(Error::SinInvitacion)));
+    assert_eq!(c.try_cancelar_invitacion_grupo(&d, &g, &ana), Err(Ok(Error::SinInvitacion)));
+    c.invitar_a_grupo(&d, &g, &beto);
+    c.rechazar_invitacion_grupo(&beto, &g);
+    assert_eq!(c.try_rechazar_invitacion_grupo(&beto, &g), Err(Ok(Error::SinInvitacion)));
+    c.invitar_a_grupo(&d, &g, &ana);
+    c.unirse_grupo_estudio(&ana, &g);
+    let p = c.hacer_pregunta(&ana, &g, &s(&env, "¿Testnet o mainnet?"));
+    let r = c.responder_pregunta(&d, &p, &s(&env, "Primero testnet"));
+    assert_eq!(c.try_desaceptar_respuesta(&ana, &p), Err(Ok(Error::SinAceptada)));
+    c.aceptar_respuesta(&ana, &p, &r);
+    c.desaceptar_respuesta(&ana, &p);
+    assert_eq!(c.pregunta(&p).unwrap().aceptada, None);
+    assert_eq!(c.reportar_pregunta(&ana, &p), 1);
+    assert_eq!(c.retirar_reporte_pregunta(&ana, &p), 0);
+    assert_eq!(c.try_retirar_reporte_pregunta(&ana, &p), Err(Ok(Error::SinReporte)));
+    c.borrar_pregunta_foro(&ana, &p);
+    assert_eq!(c.pregunta(&p), None);
+    let p2 = c.hacer_pregunta(&ana, &g, &s(&env, "Otra"));
+    assert_eq!(c.try_borrar_pregunta_foro(&beto, &p2), Err(Ok(Error::NoEsModerador)));
+    c.borrar_pregunta_foro(&d, &p2);
+    assert_eq!(c.pregunta(&p2), None);
+}

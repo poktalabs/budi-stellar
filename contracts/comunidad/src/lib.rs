@@ -27,6 +27,7 @@ enum Clave {
     Voto(u32, Address),
     Reporte(u32, Address),
     Moderador(u32, Address),
+    Descripcion(u32),
 }
 
 #[contracttype]
@@ -87,6 +88,8 @@ pub enum Error {
     YaEsModerador = 21,
     NoEsModerador = 22,
     YaAceptada = 23,
+    SinReporte = 24,
+    SinAceptada = 25,
 }
 
 /// Algo cambió en un grupo: `accion` dice qué (crear, invitar, unirse, salir,
@@ -499,6 +502,99 @@ impl Comunidad {
         }
         ForoCambio { numero: respuesta, quien, accion: symbol_short!("borrar") }.publish(&env);
         Ok(())
+    }
+
+    /// El dueño escribe de qué trata el grupo (tema, horario, nivel).
+    pub fn describir_grupo_estudio(env: Env, dueno: Address, grupo: u32, descripcion: String) -> Result<(), Error> {
+        Self::grupo_del_dueno(&env, &dueno, grupo)?;
+        revisar_texto(&descripcion)?;
+        guardar(&env, &Clave::Descripcion(grupo), &descripcion);
+        GrupoCambio { grupo, quien: dueno, accion: symbol_short!("describir") }.publish(&env);
+        Ok(())
+    }
+
+    /// El dueño vuelve el grupo privado (solo con invitación) o abierto.
+    pub fn cambiar_privacidad_grupo(env: Env, dueno: Address, grupo: u32, privado: bool) -> Result<(), Error> {
+        let mut g = Self::grupo_del_dueno(&env, &dueno, grupo)?;
+        g.privado = privado;
+        guardar(&env, &Clave::Grupo(grupo), &g);
+        GrupoCambio { grupo, quien: dueno, accion: symbol_short!("privado") }.publish(&env);
+        Ok(())
+    }
+
+    /// El dueño retira una invitación que aún no se usó.
+    pub fn cancelar_invitacion_grupo(env: Env, dueno: Address, grupo: u32, invitado: Address) -> Result<(), Error> {
+        Self::grupo_del_dueno(&env, &dueno, grupo)?;
+        let k = Clave::Invitado(grupo, invitado.clone());
+        if !env.storage().persistent().has(&k) {
+            return Err(Error::SinInvitacion);
+        }
+        env.storage().persistent().remove(&k);
+        GrupoCambio { grupo, quien: invitado, accion: symbol_short!("cancelar") }.publish(&env);
+        Ok(())
+    }
+
+    /// Quien fue invitado dice que no; la invitación desaparece.
+    pub fn rechazar_invitacion_grupo(env: Env, invitado: Address, grupo: u32) -> Result<(), Error> {
+        invitado.require_auth();
+        let k = Clave::Invitado(grupo, invitado.clone());
+        if !env.storage().persistent().has(&k) {
+            return Err(Error::SinInvitacion);
+        }
+        env.storage().persistent().remove(&k);
+        GrupoCambio { grupo, quien: invitado, accion: symbol_short!("rechazar") }.publish(&env);
+        Ok(())
+    }
+
+    /// Quien preguntó deja su pregunta sin respuesta aceptada.
+    pub fn desaceptar_respuesta(env: Env, autor: Address, pregunta: u32) -> Result<(), Error> {
+        autor.require_auth();
+        let mut p = Self::cargar_pregunta(&env, pregunta)?;
+        if p.autor != autor {
+            return Err(Error::NoEsAutor);
+        }
+        if p.aceptada.is_none() {
+            return Err(Error::SinAceptada);
+        }
+        p.aceptada = None;
+        guardar(&env, &Clave::Pregunta(pregunta), &p);
+        ForoCambio { numero: pregunta, quien: autor, accion: symbol_short!("desacept") }.publish(&env);
+        Ok(())
+    }
+
+    /// Un miembro retira su reporte de una pregunta. Regresa los reportes que quedan.
+    pub fn retirar_reporte_pregunta(env: Env, miembro: Address, pregunta: u32) -> Result<u32, Error> {
+        miembro.require_auth();
+        let mut p = Self::cargar_pregunta(&env, pregunta)?;
+        let k = Clave::Reporte(pregunta, miembro.clone());
+        if !env.storage().persistent().has(&k) {
+            return Err(Error::SinReporte);
+        }
+        env.storage().persistent().remove(&k);
+        p.reportes -= 1;
+        guardar(&env, &Clave::Pregunta(pregunta), &p);
+        ForoCambio { numero: pregunta, quien: miembro, accion: symbol_short!("sinrep") }.publish(&env);
+        Ok(p.reportes)
+    }
+
+    /// Quien preguntó (si aún no aceptó respuesta) o un moderador borra la pregunta.
+    pub fn borrar_pregunta_foro(env: Env, quien: Address, pregunta: u32) -> Result<(), Error> {
+        let p = Self::cargar_pregunta(&env, pregunta)?;
+        if p.autor == quien {
+            quien.require_auth();
+            if p.aceptada.is_some() {
+                return Err(Error::YaAceptada);
+            }
+        } else {
+            Self::puede_moderar(&env, &quien, p.grupo)?;
+        }
+        env.storage().persistent().remove(&Clave::Pregunta(pregunta));
+        ForoCambio { numero: pregunta, quien, accion: symbol_short!("borrarp") }.publish(&env);
+        Ok(())
+    }
+
+    pub fn descripcion_grupo(env: Env, grupo: u32) -> Option<String> {
+        env.storage().persistent().get(&Clave::Descripcion(grupo))
     }
 
     pub fn es_moderador_grupo(env: Env, grupo: u32, quien: Address) -> bool {
