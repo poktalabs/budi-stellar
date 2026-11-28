@@ -4,28 +4,38 @@ import { getNetworkDetails, isConnected, requestAccess, signTransaction } from "
 import { Buffer } from "buffer";
 import { Address, Contract, nativeToScVal, Networks, rpc, scValToNative, TransactionBuilder, xdr } from "@stellar/stellar-sdk";
 
-export const RED = Networks.TESTNET;
-export const RPC_URL = "https://soroban-testnet.stellar.org";
+export let RED = Networks.TESTNET;
+export let RPC_URL = "https://soroban-testnet.stellar.org";
 export const MATRICULA = "CAUATYLPFCJTSFWKQQUC7LO5R5RIIPY7WXE6EEYZLMA7Z7HCW7LHYDAA";
 export const BITACORA = "CDOI7II5MEP5M765BOWH4LQQ45YBE4HHLH7CN2534UUZLMBDNFUB4AUQ";
 export const CURSO = "soroban_101";
-export const EXPLORER = "https://stellar.expert/explorer/testnet";
+export let EXPLORER = "https://stellar.expert/explorer/testnet";
+let NOMBRE_RED = "Testnet";
 
-const server = new rpc.Server(RPC_URL);
+let server = new rpc.Server(RPC_URL);
+
+/** Cambia esta página a la red principal (mainnet): dinero real, firma con Freighter en Mainnet. */
+export function usarMainnet() {
+  RED = Networks.PUBLIC;
+  RPC_URL = "https://mainnet.sorobanrpc.com";
+  EXPLORER = "https://stellar.expert/explorer/public";
+  NOMBRE_RED = "Mainnet";
+  server = new rpc.Server(RPC_URL);
+}
 
 export async function conectar(): Promise<string> {
   const hay = await Promise.race([
     isConnected().then((r) => r.isConnected),
     new Promise<boolean>((ok) => setTimeout(() => ok(false), 3000)),
   ]);
-  if (!hay) throw new Error("No encontramos Freighter. Instálala en freighter.app, cámbiala a Testnet y vuelve a intentar.");
+  if (!hay) throw new Error(`No encontramos Freighter. Instálala en freighter.app, cámbiala a ${NOMBRE_RED} y vuelve a intentar.`);
   const acceso = await requestAccess();
   if (acceso.error || !acceso.address) {
     throw new Error("No se pudo conectar Freighter. ¿Está instalada y desbloqueada?");
   }
   const red = await getNetworkDetails();
   if (red.networkPassphrase !== RED) {
-    throw new Error("Cambia Freighter a Testnet y vuelve a conectar.");
+    throw new Error(`Cambia Freighter a ${NOMBRE_RED} y vuelve a conectar.`);
   }
   return acceso.address;
 }
@@ -76,6 +86,13 @@ export async function escribir(cuenta: string, contrato: string, metodo: string,
     await new Promise((ok) => setTimeout(ok, 1000));
   }
   throw new Error("La red tardó demasiado. Revisa el enlace en unos segundos.");
+}
+
+/** Lee lo que regresó la función en una transacción ya confirmada. */
+export async function resultado(hash: string): Promise<unknown> {
+  const r = await server.getTransaction(hash);
+  if (r.status !== rpc.Api.GetTransactionStatus.SUCCESS || !r.returnValue) return undefined;
+  return scValToNative(r.returnValue);
 }
 
 const yo = (c: string) => new Address(c).toScVal();

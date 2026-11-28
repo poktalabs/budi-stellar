@@ -9,6 +9,11 @@ export default defineConfig({
     outDir: "dist-boveda",
     emptyOutDir: true,
     target: "es2022",
-    rollupOptions: { input: { boveda: resolve(import.meta.dirname, "boveda/index.html") } },
+    rollupOptions: {
+      input: {
+        boveda: resolve(import.meta.dirname, "boveda/index.html"),
+        mainnet: resolve(import.meta.dirname, "boveda/mainnet/index.html"),
+      },
+    },
   },
 });
