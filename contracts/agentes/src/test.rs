@@ -117,3 +117,42 @@ fn el_validador_delega_y_solo_el_nuevo_responde() {
     assert_eq!(env.auths()[0].0, v2);
     assert_eq!(c.try_delegar_validacion(&trabajo, &v1), Err(Ok(Error::ValidacionYaExiste)));
 }
+
+#[test]
+fn vincula_cuenta_pausa_reactiva_y_actualiza_perfil() {
+    let (env, c, dueno) = caso();
+    let id = c.registrar_agente(&dueno, &s(&env, "uri"));
+    assert_eq!(c.cuenta_vinculada(&id), None);
+    let cuenta = Address::generate(&env);
+    c.vincular_cuenta(&id, &cuenta);
+    assert_eq!(c.cuenta_vinculada(&id), Some(cuenta));
+
+    let ana = Address::generate(&env);
+    c.pausar_agente(&id);
+    assert!(c.pausado(&id));
+    assert_eq!(c.try_pausar_agente(&id), Err(Ok(Error::YaPausado)));
+    assert_eq!(
+        c.try_dar_feedback(&ana, &id, &80, &symbol_short!("codigo"), &s(&env, "pr/1")),
+        Err(Ok(Error::AgentePausado))
+    );
+    c.reactivar_agente(&id);
+    assert!(!c.pausado(&id));
+    assert_eq!(c.try_reactivar_agente(&id), Err(Ok(Error::NoEstaPausado)));
+    assert_eq!(c.dar_feedback(&ana, &id, &80, &symbol_short!("codigo"), &s(&env, "pr/1")), 0);
+
+    c.actualizar_perfil(&id, &s(&env, "https://budi.lat/agentes/v2.json"));
+    assert_eq!(c.agente(&id).uri, s(&env, "https://budi.lat/agentes/v2.json"));
+    assert_eq!(c.try_actualizar_perfil(&id, &s(&env, "")), Err(Ok(Error::UriVacia)));
+}
+
+#[test]
+#[should_panic]
+fn solo_el_dueno_pausa() {
+    let env = Env::default();
+    let c = AgentesClient::new(&env, &env.register(Agentes, ()));
+    let dueno = Address::generate(&env);
+    env.mock_all_auths();
+    let id = c.registrar_agente(&dueno, &s(&env, "uri"));
+    env.set_auths(&[]);
+    c.pausar_agente(&id);
+}

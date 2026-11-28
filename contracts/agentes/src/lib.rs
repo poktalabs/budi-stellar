@@ -60,6 +60,8 @@ enum Clave {
     Feedback(u32, u32),
     Resumen(u32),
     Validacion(BytesN<32>),
+    Cuenta(u32),
+    Pausado(u32),
 }
 
 #[contracterror]
@@ -76,6 +78,9 @@ pub enum Error {
     ValidacionYaExiste = 8,
     ValidacionNoExiste = 9,
     MismoDueno = 10,
+    AgentePausado = 11,
+    NoEstaPausado = 12,
+    YaPausado = 13,
 }
 
 #[contractevent]
@@ -161,6 +166,38 @@ pub struct ValidacionDelegada {
     pub a: Address,
 }
 
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CuentaVinculada {
+    #[topic]
+    pub id: u32,
+    pub cuenta: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AgentePausadoEv {
+    #[topic]
+    pub id: u32,
+    pub dueno: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AgenteReactivado {
+    #[topic]
+    pub id: u32,
+    pub dueno: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PerfilActualizado {
+    #[topic]
+    pub id: u32,
+    pub uri: String,
+}
+
 #[contract]
 pub struct Agentes;
 
@@ -208,6 +245,9 @@ impl Agentes {
         let a = Self::agente(env.clone(), agente)?;
         if a.dueno == cliente {
             return Err(Error::AutoCalificacion);
+        }
+        if Self::pausado(env.clone(), agente) {
+            return Err(Error::AgentePausado);
         }
         if puntaje > 100 {
             return Err(Error::PuntajeInvalido);
@@ -329,6 +369,61 @@ impl Agentes {
         poner(&env, &Clave::Validacion(trabajo.clone()), &v);
         ValidacionDelegada { trabajo, de, a }.publish(&env);
         Ok(())
+    }
+
+    /// El dueño vincula el agente con la cuenta (por ejemplo, su Cuenta de agente) que
+    /// cobra por su trabajo. Así los pagos y la reputación apuntan al mismo agente.
+    pub fn vincular_cuenta(env: Env, id: u32, cuenta: Address) -> Result<(), Error> {
+        Self::agente(env.clone(), id)?.dueno.require_auth();
+        poner(&env, &Clave::Cuenta(id), &cuenta);
+        CuentaVinculada { id, cuenta }.publish(&env);
+        Ok(())
+    }
+
+    /// El dueño pausa al agente: deja de aceptar calificaciones nuevas (por ejemplo,
+    /// mientras lo corrige). Su historial sigue público.
+    pub fn pausar_agente(env: Env, id: u32) -> Result<(), Error> {
+        let a = Self::agente(env.clone(), id)?;
+        a.dueno.require_auth();
+        if Self::pausado(env.clone(), id) {
+            return Err(Error::YaPausado);
+        }
+        poner(&env, &Clave::Pausado(id), &true);
+        AgentePausadoEv { id, dueno: a.dueno }.publish(&env);
+        Ok(())
+    }
+
+    /// El dueño reactiva un agente pausado.
+    pub fn reactivar_agente(env: Env, id: u32) -> Result<(), Error> {
+        let a = Self::agente(env.clone(), id)?;
+        a.dueno.require_auth();
+        if !Self::pausado(env.clone(), id) {
+            return Err(Error::NoEstaPausado);
+        }
+        env.storage().persistent().remove(&Clave::Pausado(id));
+        AgenteReactivado { id, dueno: a.dueno }.publish(&env);
+        Ok(())
+    }
+
+    /// El dueño cambia la URI de la ficha del agente (qué hace, cómo contactarlo).
+    pub fn actualizar_perfil(env: Env, id: u32, uri: String) -> Result<(), Error> {
+        let mut a = Self::agente(env.clone(), id)?;
+        a.dueno.require_auth();
+        if uri.is_empty() {
+            return Err(Error::UriVacia);
+        }
+        a.uri = uri.clone();
+        poner(&env, &Clave::Agente(id), &a);
+        PerfilActualizado { id, uri }.publish(&env);
+        Ok(())
+    }
+
+    pub fn cuenta_vinculada(env: Env, id: u32) -> Option<Address> {
+        env.storage().persistent().get(&Clave::Cuenta(id))
+    }
+
+    pub fn pausado(env: Env, id: u32) -> bool {
+        env.storage().persistent().get(&Clave::Pausado(id)).unwrap_or(false)
     }
 
     pub fn agente(env: Env, id: u32) -> Result<Agente, Error> {
