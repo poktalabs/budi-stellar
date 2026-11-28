@@ -58,6 +58,8 @@ enum Clave {
     Activa(Address, Symbol),
     /// sha256 del código de un solo uso -> curso al que da acceso.
     Codigo(BytesN<32>),
+    /// Curso que ya no acepta inscripciones nuevas.
+    Cerrado(Symbol),
 }
 
 #[contracterror]
@@ -73,6 +75,8 @@ pub enum Error {
     PlazoVencido = 7,
     CodigoInvalido = 8,
     MismoAlumno = 9,
+    CursoCerrado = 10,
+    PlazoInvalido = 11,
 }
 
 #[contractevent]
@@ -121,6 +125,21 @@ pub struct Cobrado {
     pub monto: i128,
 }
 
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PlazoExtendido {
+    #[topic]
+    pub id: u32,
+    pub limite: u64,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InscripcionesCerradas {
+    #[topic]
+    pub curso: Symbol,
+}
+
 #[contract]
 pub struct Matricula;
 
@@ -153,6 +172,7 @@ impl Matricula {
     pub fn inscribir(env: Env, alumno: Address, curso: Symbol) -> Result<u32, Error> {
         alumno.require_auth();
         let datos = Self::curso(env.clone(), curso.clone())?;
+        Self::abierto(&env, &curso)?;
         Self::sin_inscripcion_activa(&env, &alumno, &curso)?;
         Self::token(&env).transfer(&alumno, &env.current_contract_address(), &datos.precio);
         Ok(Self::alta(&env, alumno, curso, datos.precio, datos.plazo))
@@ -184,6 +204,7 @@ impl Matricula {
             .get(&clave)
             .ok_or(Error::CodigoInvalido)?;
         let datos = Self::curso(env.clone(), curso.clone())?;
+        Self::abierto(&env, &curso)?;
         Self::sin_inscripcion_activa(&env, &alumno, &curso)?;
         env.storage().persistent().remove(&clave);
         Ok(Self::alta(&env, alumno, curso, 0, datos.plazo))
@@ -289,6 +310,43 @@ impl Matricula {
         inscripcion.alumno = a.clone();
         Self::guardar(&env, id, &inscripcion);
         InscripcionTransferida { id, de, a }.publish(&env);
+        Ok(())
+    }
+
+
+    /// Budi le da más tiempo a un alumno: suma `segundos` al límite de una inscripción en
+    /// custodia (por ejemplo, por una incapacidad). Solo el admin. Regresa el nuevo límite.
+    pub fn extender_plazo(env: Env, id: u32, segundos: u64) -> Result<u64, Error> {
+        Self::admin(env.clone()).require_auth();
+        if segundos == 0 {
+            return Err(Error::PlazoInvalido);
+        }
+        let mut inscripcion = Self::inscripcion(env.clone(), id)?;
+        if inscripcion.estado != Estado::EnCustodia {
+            return Err(Error::NoEstaEnCustodia);
+        }
+        inscripcion.limite += segundos;
+        Self::guardar(&env, id, &inscripcion);
+        PlazoExtendido { id, limite: inscripcion.limite }.publish(&env);
+        Ok(inscripcion.limite)
+    }
+
+    /// Budi cierra las inscripciones de `curso`: nadie nuevo entra (ni con depósito ni con
+    /// código); quien ya está inscrito sigue igual. Solo el admin.
+    pub fn cerrar_inscripciones(env: Env, curso: Symbol) -> Result<(), Error> {
+        Self::admin(env.clone()).require_auth();
+        Self::curso(env.clone(), curso.clone())?;
+        let clave = Clave::Cerrado(curso.clone());
+        env.storage().persistent().set(&clave, &true);
+        env.storage().persistent().extend_ttl(&clave, TTL_UMBRAL, TTL_EXTENDER);
+        InscripcionesCerradas { curso }.publish(&env);
+        Ok(())
+    }
+
+    fn abierto(env: &Env, curso: &Symbol) -> Result<(), Error> {
+        if env.storage().persistent().has(&Clave::Cerrado(curso.clone())) {
+            return Err(Error::CursoCerrado);
+        }
         Ok(())
     }
 

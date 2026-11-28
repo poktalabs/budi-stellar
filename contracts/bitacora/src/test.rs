@@ -288,3 +288,21 @@ fn sin_firma_no_borra() {
     env.set_auths(&[]);
     client.borrar(&builder, &1);
 }
+
+#[test]
+fn fijar_hito_y_borrar_lo_ajusta() {
+    let (env, client) = setup();
+    env.mock_all_auths();
+    let b = Address::generate(&env);
+    client.registrar(&b, &String::from_str(&env, "Uno"));
+    client.registrar(&b, &String::from_str(&env, "Dos"));
+    client.registrar(&b, &String::from_str(&env, "Tres"));
+    assert_eq!(client.fijado(&b), None);
+    client.fijar_hito(&b, &3);
+    assert_eq!(client.fijado(&b), Some(3));
+    client.borrar(&b, &1);
+    assert_eq!(client.fijado(&b), Some(2));
+    client.borrar(&b, &2);
+    assert_eq!(client.fijado(&b), None);
+    assert_eq!(client.try_fijar_hito(&b, &5), Err(Ok(Error::HitoInexistente)));
+}

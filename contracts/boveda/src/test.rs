@@ -111,3 +111,17 @@ fn cerrar_regresa_el_saldo_al_admin() {
     assert_eq!(c.b.try_cerrar(), Err(Ok(Error::BovedaVacia)));
     let _ = &c.env;
 }
+
+#[test]
+fn cambiar_codigo_abre_con_el_nuevo_y_no_con_el_viejo() {
+    let c = caso();
+    c.b.depositar(&c.budi, &BONO);
+    let nuevo: BytesN<32> = c.env.crypto().sha256(&codigo(&c.env, "reto2")).into();
+    c.b.cambiar_codigo(&nuevo);
+    let quien = Address::generate(&c.env);
+    assert_eq!(
+        c.b.try_reclamar(&quien, &codigo(&c.env, "shipit")),
+        Err(Ok(Error::CodigoIncorrecto))
+    );
+    assert_eq!(c.b.reclamar(&quien, &codigo(&c.env, "Reto 2")), BONO);
+}

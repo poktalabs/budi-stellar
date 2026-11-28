@@ -198,3 +198,29 @@ fn el_lugar_se_transfiere_a_otra_persona() {
     c.m.completar(&id);
     assert_eq!(c.token.balance(&beto), PRECIO);
 }
+
+#[test]
+fn extender_plazo_deja_completar_despues_del_limite_original() {
+    let c = caso();
+    let id = c.m.inscribir(&c.alumno, &symbol_short!("soroban"));
+    let antes = c.m.inscripcion(&id).limite;
+    assert_eq!(c.m.extender_plazo(&id, &1000), antes + 1000);
+    c.env.ledger().with_mut(|l| l.timestamp = antes + 10);
+    c.m.completar(&id);
+    assert_eq!(c.token.balance(&c.alumno), PRECIO * 3);
+    assert_eq!(c.m.try_extender_plazo(&id, &1000), Err(Ok(Error::NoEstaEnCustodia)));
+}
+
+#[test]
+fn cerrar_inscripciones_bloquea_nuevos_alumnos() {
+    let c = caso();
+    let id = c.m.inscribir(&c.alumno, &symbol_short!("soroban"));
+    c.m.cerrar_inscripciones(&symbol_short!("soroban"));
+    let otro = Address::generate(&c.env);
+    assert_eq!(
+        c.m.try_inscribir(&otro, &symbol_short!("soroban")),
+        Err(Ok(Error::CursoCerrado))
+    );
+    c.m.completar(&id);
+    assert!(c.m.inscrito(&c.alumno, &symbol_short!("soroban")));
+}

@@ -25,6 +25,8 @@ const TTL_EXTENDER: u32 = 518_400; // ~30 días
 enum Clave {
     Hitos(Address),
     Acceso,
+    /// Número del hito que el builder fijó arriba de su bitácora.
+    Fijado(Address),
 }
 
 /// Qué curso de qué contrato Matrícula hay que haber pagado para registrar.
@@ -75,6 +77,15 @@ pub struct HitoCorregido {
 #[contractevent]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HitoBorrado {
+    #[topic]
+    pub builder: Address,
+    pub numero: u32,
+    pub hito: String,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HitoFijado {
     #[topic]
     pub builder: Address,
     pub numero: u32,
@@ -198,8 +209,36 @@ impl Bitacora {
         hitos.remove(numero - 1);
         env.storage().persistent().set(&clave, &hitos);
         env.storage().persistent().extend_ttl(&clave, TTL_UMBRAL, TTL_EXTENDER);
+        let fijo = Clave::Fijado(builder.clone());
+        if let Some(f) = env.storage().persistent().get::<_, u32>(&fijo) {
+            if f == numero {
+                env.storage().persistent().remove(&fijo);
+            } else if f > numero {
+                env.storage().persistent().set(&fijo, &(f - 1));
+            }
+        }
         HitoBorrado { builder, numero, hito }.publish(&env);
         Ok(())
+    }
+
+    /// El builder fija su hito `numero` (empieza en 1) como el más importante, el que su
+    /// perfil muestra primero. Fijar otro reemplaza al anterior. Solo el propio builder firma.
+    pub fn fijar_hito(env: Env, builder: Address, numero: u32) -> Result<(), Error> {
+        builder.require_auth();
+        let hitos = Self::hitos(env.clone(), builder.clone());
+        if numero == 0 || numero > hitos.len() {
+            return Err(Error::HitoInexistente);
+        }
+        let clave = Clave::Fijado(builder.clone());
+        env.storage().persistent().set(&clave, &numero);
+        env.storage().persistent().extend_ttl(&clave, TTL_UMBRAL, TTL_EXTENDER);
+        HitoFijado { builder, numero, hito: hitos.get_unchecked(numero - 1) }.publish(&env);
+        Ok(())
+    }
+
+    /// El número del hito fijado de `builder`, si fijó uno.
+    pub fn fijado(env: Env, builder: Address) -> Option<u32> {
+        env.storage().persistent().get(&Clave::Fijado(builder))
     }
 
     /// Todos los hitos de `builder`, del primero al último.

@@ -56,6 +56,13 @@ pub struct Cerrada {
     pub monto: i128,
 }
 
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodigoCambiado {
+    #[topic]
+    pub admin: Address,
+}
+
 #[contract]
 pub struct Boveda;
 
@@ -137,6 +144,16 @@ impl Boveda {
         Self::token(&env).transfer(&env.current_contract_address(), &admin, &monto);
         Cerrada { admin, monto }.publish(&env);
         Ok(monto)
+    }
+
+    /// El admin cambia el código de la bóveda (por ejemplo, para un reto nuevo). Se guarda
+    /// solo el sha256 del código normalizado. Quien ya reclamó sigue sin poder reclamar.
+    pub fn cambiar_codigo(env: Env, codigo: BytesN<32>) {
+        let admin = Self::admin(env.clone());
+        admin.require_auth();
+        env.storage().instance().set(&Clave::Codigo, &codigo);
+        Self::extender(&env);
+        CodigoCambiado { admin }.publish(&env);
     }
 
     fn extender(env: &Env) {
