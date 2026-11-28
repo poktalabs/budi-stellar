@@ -65,7 +65,7 @@ fn foro_preguntar_responder_aceptar_votar_fijar_reportar_y_ocultar() {
     assert_eq!(c.votar_respuesta(&ana, &r), 1);
     assert_eq!(c.try_votar_respuesta(&ana, &r), Err(Ok(Error::YaVoto)));
     assert_eq!(c.votar_respuesta(&d, &r), 2);
-    assert_eq!(c.try_fijar_pregunta(&ana, &p, &true), Err(Ok(Error::NoEsDueno)));
+    assert_eq!(c.try_fijar_pregunta(&ana, &p, &true), Err(Ok(Error::NoEsModerador)));
     c.fijar_pregunta(&d, &p, &true);
     assert!(c.pregunta(&p).unwrap().fijada);
     assert_eq!(c.reportar_pregunta(&beto, &p), 1);
@@ -94,4 +94,43 @@ fn sin_firma_no_pregunta() {
     let g = c.crear_grupo_estudio(&d, &s(&env, "G"), &false);
     env.set_auths(&[]);
     c.hacer_pregunta(&d, &g, &s(&env, "Sin firma"));
+}
+
+#[test]
+fn moderadores_renombrar_reabrir_editar_quitar_voto_y_borrar() {
+    let (env, c) = setup();
+    env.mock_all_auths();
+    let (d, ana, beto) = (Address::generate(&env), Address::generate(&env), Address::generate(&env));
+    let g = c.crear_grupo_estudio(&d, &s(&env, "G"), &false);
+    c.unirse_grupo_estudio(&ana, &g);
+    c.unirse_grupo_estudio(&beto, &g);
+    let p = c.hacer_pregunta(&ana, &g, &s(&env, "¿Qué es un SAC?"));
+    let r = c.responder_pregunta(&beto, &p, &s(&env, "Un token"));
+    assert_eq!(c.try_ocultar_pregunta(&beto, &p, &true), Err(Ok(Error::NoEsModerador)));
+    c.nombrar_moderador_grupo(&d, &g, &beto);
+    assert!(c.es_moderador_grupo(&g, &beto));
+    assert_eq!(c.try_nombrar_moderador_grupo(&d, &g, &beto), Err(Ok(Error::YaEsModerador)));
+    c.ocultar_pregunta(&beto, &p, &true);
+    c.ocultar_pregunta(&beto, &p, &false);
+    c.quitar_moderador_grupo(&d, &g, &beto);
+    assert_eq!(c.try_quitar_moderador_grupo(&d, &g, &beto), Err(Ok(Error::NoEsModerador)));
+    c.editar_pregunta(&ana, &p, &s(&env, "¿Qué es un Stellar Asset Contract?"));
+    assert_eq!(c.try_editar_pregunta(&beto, &p, &s(&env, "x")), Err(Ok(Error::NoEsAutor)));
+    c.editar_respuesta(&beto, &r, &s(&env, "El contrato de un activo de Stellar"));
+    assert_eq!(c.respuesta(&r).unwrap().texto, s(&env, "El contrato de un activo de Stellar"));
+    assert_eq!(c.votar_respuesta(&ana, &r), 1);
+    assert_eq!(c.quitar_voto_respuesta(&ana, &r), 0);
+    assert_eq!(c.try_quitar_voto_respuesta(&ana, &r), Err(Ok(Error::SinVoto)));
+    c.aceptar_respuesta(&ana, &p, &r);
+    assert_eq!(c.try_editar_pregunta(&ana, &p, &s(&env, "y")), Err(Ok(Error::YaAceptada)));
+    assert_eq!(c.try_borrar_respuesta_foro(&ana, &r), Err(Ok(Error::NoEsModerador)));
+    c.borrar_respuesta_foro(&d, &r);
+    assert_eq!(c.respuesta(&r), None);
+    assert_eq!(c.pregunta(&p).unwrap().aceptada, None);
+    c.renombrar_grupo_estudio(&d, &g, &s(&env, "G2"));
+    assert_eq!(c.grupo(&g).unwrap().nombre, s(&env, "G2"));
+    assert_eq!(c.try_reabrir_grupo_estudio(&d, &g), Err(Ok(Error::GrupoAbierto)));
+    c.cerrar_grupo_estudio(&d, &g);
+    c.reabrir_grupo_estudio(&d, &g);
+    assert!(!c.grupo(&g).unwrap().cerrado);
 }

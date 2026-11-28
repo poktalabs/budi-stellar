@@ -26,6 +26,7 @@ enum Clave {
     Respuesta(u32),
     Voto(u32, Address),
     Reporte(u32, Address),
+    Moderador(u32, Address),
 }
 
 #[contracttype]
@@ -81,6 +82,11 @@ pub enum Error {
     PreguntaOculta = 16,
     DuenoNoSale = 17,
     RespuestaAjena = 18,
+    SinVoto = 19,
+    GrupoAbierto = 20,
+    YaEsModerador = 21,
+    NoEsModerador = 22,
+    YaAceptada = 23,
 }
 
 /// Algo cambió en un grupo: `accion` dice qué (crear, invitar, unirse, salir,
@@ -153,6 +159,15 @@ impl Comunidad {
         }
         if !g.miembros.contains(quien) {
             return Err(Error::NoEsMiembro);
+        }
+        Ok(g)
+    }
+
+    fn puede_moderar(env: &Env, quien: &Address, grupo: u32) -> Result<Grupo, Error> {
+        quien.require_auth();
+        let g = Self::cargar_grupo(env, grupo)?;
+        if g.dueno != *quien && !env.storage().persistent().has(&Clave::Moderador(grupo, quien.clone())) {
+            return Err(Error::NoEsModerador);
         }
         Ok(g)
     }
@@ -333,7 +348,7 @@ impl Comunidad {
     /// El dueño del grupo fija (o desfija) una pregunta arriba del foro.
     pub fn fijar_pregunta(env: Env, dueno: Address, pregunta: u32, fijada: bool) -> Result<(), Error> {
         let mut p = Self::cargar_pregunta(&env, pregunta)?;
-        Self::grupo_del_dueno(&env, &dueno, p.grupo)?;
+        Self::puede_moderar(&env, &dueno, p.grupo)?;
         p.fijada = fijada;
         guardar(&env, &Clave::Pregunta(pregunta), &p);
         ForoCambio { numero: pregunta, quien: dueno, accion: symbol_short!("fijar") }.publish(&env);
@@ -360,11 +375,134 @@ impl Comunidad {
     /// El dueño modera: oculta (o vuelve a mostrar) una pregunta. Oculta, nadie la responde.
     pub fn ocultar_pregunta(env: Env, dueno: Address, pregunta: u32, oculta: bool) -> Result<(), Error> {
         let mut p = Self::cargar_pregunta(&env, pregunta)?;
-        Self::grupo_del_dueno(&env, &dueno, p.grupo)?;
+        Self::puede_moderar(&env, &dueno, p.grupo)?;
         p.oculta = oculta;
         guardar(&env, &Clave::Pregunta(pregunta), &p);
         ForoCambio { numero: pregunta, quien: dueno, accion: symbol_short!("ocultar") }.publish(&env);
         Ok(())
+    }
+
+    /// El dueño nombra moderador a un miembro: puede fijar, ocultar y quitar respuestas.
+    pub fn nombrar_moderador_grupo(env: Env, dueno: Address, grupo: u32, miembro: Address) -> Result<(), Error> {
+        let g = Self::grupo_del_dueno(&env, &dueno, grupo)?;
+        if !g.miembros.contains(&miembro) {
+            return Err(Error::NoEsMiembro);
+        }
+        let k = Clave::Moderador(grupo, miembro.clone());
+        if env.storage().persistent().has(&k) {
+            return Err(Error::YaEsModerador);
+        }
+        guardar(&env, &k, &true);
+        GrupoCambio { grupo, quien: miembro, accion: symbol_short!("moderador") }.publish(&env);
+        Ok(())
+    }
+
+    /// El dueño le quita el rol de moderador a alguien.
+    pub fn quitar_moderador_grupo(env: Env, dueno: Address, grupo: u32, miembro: Address) -> Result<(), Error> {
+        Self::grupo_del_dueno(&env, &dueno, grupo)?;
+        let k = Clave::Moderador(grupo, miembro.clone());
+        if !env.storage().persistent().has(&k) {
+            return Err(Error::NoEsModerador);
+        }
+        env.storage().persistent().remove(&k);
+        GrupoCambio { grupo, quien: miembro, accion: symbol_short!("sinmod") }.publish(&env);
+        Ok(())
+    }
+
+    /// El dueño cambia el nombre del grupo.
+    pub fn renombrar_grupo_estudio(env: Env, dueno: Address, grupo: u32, nombre: String) -> Result<(), Error> {
+        let mut g = Self::grupo_del_dueno(&env, &dueno, grupo)?;
+        if nombre.is_empty() {
+            return Err(Error::NombreVacio);
+        }
+        g.nombre = nombre;
+        guardar(&env, &Clave::Grupo(grupo), &g);
+        GrupoCambio { grupo, quien: dueno, accion: symbol_short!("renombrar") }.publish(&env);
+        Ok(())
+    }
+
+    /// El dueño reabre un grupo cerrado (por ejemplo, para una nueva generación).
+    pub fn reabrir_grupo_estudio(env: Env, dueno: Address, grupo: u32) -> Result<(), Error> {
+        let mut g = Self::grupo_del_dueno(&env, &dueno, grupo)?;
+        if !g.cerrado {
+            return Err(Error::GrupoAbierto);
+        }
+        g.cerrado = false;
+        guardar(&env, &Clave::Grupo(grupo), &g);
+        GrupoCambio { grupo, quien: dueno, accion: symbol_short!("reabrir") }.publish(&env);
+        Ok(())
+    }
+
+    /// Quien preguntó corrige el texto de su pregunta mientras no tenga respuesta aceptada.
+    pub fn editar_pregunta(env: Env, autor: Address, pregunta: u32, texto: String) -> Result<(), Error> {
+        autor.require_auth();
+        let mut p = Self::cargar_pregunta(&env, pregunta)?;
+        if p.autor != autor {
+            return Err(Error::NoEsAutor);
+        }
+        if p.aceptada.is_some() {
+            return Err(Error::YaAceptada);
+        }
+        Self::miembro_abierto(&env, &autor, p.grupo)?;
+        revisar_texto(&texto)?;
+        p.texto = texto;
+        guardar(&env, &Clave::Pregunta(pregunta), &p);
+        ForoCambio { numero: pregunta, quien: autor, accion: symbol_short!("editar") }.publish(&env);
+        Ok(())
+    }
+
+    /// Quien respondió corrige su respuesta.
+    pub fn editar_respuesta(env: Env, autor: Address, respuesta: u32, texto: String) -> Result<(), Error> {
+        autor.require_auth();
+        let mut r = Self::cargar_respuesta(&env, respuesta)?;
+        if r.autor != autor {
+            return Err(Error::NoEsAutor);
+        }
+        let p = Self::cargar_pregunta(&env, r.pregunta)?;
+        Self::miembro_abierto(&env, &autor, p.grupo)?;
+        revisar_texto(&texto)?;
+        r.texto = texto;
+        guardar(&env, &Clave::Respuesta(respuesta), &r);
+        ForoCambio { numero: respuesta, quien: autor, accion: symbol_short!("editresp") }.publish(&env);
+        Ok(())
+    }
+
+    /// Un miembro retira su voto. Regresa los votos que quedan.
+    pub fn quitar_voto_respuesta(env: Env, votante: Address, respuesta: u32) -> Result<u32, Error> {
+        votante.require_auth();
+        let mut r = Self::cargar_respuesta(&env, respuesta)?;
+        let voto = Clave::Voto(respuesta, votante.clone());
+        if !env.storage().persistent().has(&voto) {
+            return Err(Error::SinVoto);
+        }
+        env.storage().persistent().remove(&voto);
+        r.votos -= 1;
+        guardar(&env, &Clave::Respuesta(respuesta), &r);
+        ForoCambio { numero: respuesta, quien: votante, accion: symbol_short!("sinvoto") }.publish(&env);
+        Ok(r.votos)
+    }
+
+    /// El autor o un moderador del grupo borra una respuesta; si era la aceptada, la
+    /// pregunta vuelve a quedar sin aceptar.
+    pub fn borrar_respuesta_foro(env: Env, quien: Address, respuesta: u32) -> Result<(), Error> {
+        let r = Self::cargar_respuesta(&env, respuesta)?;
+        let mut p = Self::cargar_pregunta(&env, r.pregunta)?;
+        if r.autor == quien {
+            quien.require_auth();
+        } else {
+            Self::puede_moderar(&env, &quien, p.grupo)?;
+        }
+        env.storage().persistent().remove(&Clave::Respuesta(respuesta));
+        if p.aceptada == Some(respuesta) {
+            p.aceptada = None;
+            guardar(&env, &Clave::Pregunta(r.pregunta), &p);
+        }
+        ForoCambio { numero: respuesta, quien, accion: symbol_short!("borrar") }.publish(&env);
+        Ok(())
+    }
+
+    pub fn es_moderador_grupo(env: Env, grupo: u32, quien: Address) -> bool {
+        env.storage().persistent().has(&Clave::Moderador(grupo, quien))
     }
 
     pub fn grupo(env: Env, grupo: u32) -> Option<Grupo> {
