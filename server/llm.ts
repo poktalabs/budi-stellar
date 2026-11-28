@@ -64,23 +64,31 @@ export async function reenviar(body: Record<string, unknown>, cuenta: Cuenta, mo
     return new Response(JSON.stringify(json), { status: res.status, headers });
   }
 
+  // Nebius repeats a running usage total in many chunks of one stream, so we
+  // keep the last one and count it once, when the stream ends.
   const decoder = new TextDecoder();
   let resto = "";
+  let ultimo: Usage | undefined;
+  const revisar = (l: string) => {
+    if (!l.startsWith("data: ") || l.includes("[DONE]") || !l.includes('"usage"')) return;
+    try {
+      const u = (JSON.parse(l.slice(6)) as { usage?: Usage | null }).usage;
+      if (u) ultimo = u;
+    } catch {
+      // a partial or non-JSON line: nothing to count
+    }
+  };
   const leer = new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, ctl) {
       ctl.enqueue(chunk);
       resto += decoder.decode(chunk, { stream: true });
       const lineas = resto.split("\n");
       resto = lineas.pop() ?? "";
-      for (const l of lineas) {
-        if (!l.startsWith("data: ") || l.includes("[DONE]") || !l.includes('"usage"')) continue;
-        try {
-          const u = (JSON.parse(l.slice(6)) as { usage?: Usage | null }).usage;
-          if (u) cuenta.gastado += costo(model, u);
-        } catch {
-          // a partial or non-JSON line: nothing to count
-        }
-      }
+      for (const l of lineas) revisar(l);
+    },
+    flush() {
+      revisar(resto + decoder.decode());
+      if (ultimo) cuenta.gastado += costo(model, ultimo);
     },
   });
   return new Response(res.body.pipeThrough(leer), { status: res.status, headers });
