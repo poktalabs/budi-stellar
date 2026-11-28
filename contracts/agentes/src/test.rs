@@ -199,3 +199,41 @@ fn nombra_y_retira_operador_y_recibe_reportes() {
     assert_eq!(c.try_reportar_agente(&id, &dueno, &s(&env, "x")), Err(Ok(Error::AutoReporte)));
     assert_eq!(c.try_reportar_agente(&id, &cliente, &s(&env, "")), Err(Ok(Error::MotivoVacio)));
 }
+
+#[test]
+fn ficha_de_contratacion_disponibilidad_tarifa_idioma_portafolio_y_contacto() {
+    let (env, c, dueno) = caso();
+    let id = c.registrar_agente(&dueno, &s(&env, "https://budi.lat/agentes/budi.json"));
+    assert!(!c.disponible(&id));
+    c.fijar_disponibilidad(&id, &true);
+    assert!(c.disponible(&id));
+    assert_eq!(c.try_fijar_tarifa_agente(&id, &0), Err(Ok(Error::TarifaInvalida)));
+    c.fijar_tarifa_agente(&id, &50_000_000);
+    assert_eq!(c.tarifa_agente(&id), Some(50_000_000));
+    c.fijar_idioma(&id, &symbol_short!("es"));
+    assert_eq!(c.idioma(&id), Some(symbol_short!("es")));
+    let e = s(&env, "https://budi.lat/trabajos/1");
+    c.agregar_ejemplo(&id, &e);
+    assert_eq!(c.try_agregar_ejemplo(&id, &e), Err(Ok(Error::YaTieneEjemplo)));
+    assert_eq!(c.ejemplos(&id).len(), 1);
+    c.quitar_ejemplo(&id, &e);
+    assert_eq!(c.try_quitar_ejemplo(&id, &e), Err(Ok(Error::SinEjemplo)));
+    assert_eq!(c.try_quitar_contacto(&id), Err(Ok(Error::SinContacto)));
+    c.fijar_contacto(&id, &s(&env, "@budi_lat"));
+    assert_eq!(c.contacto(&id), Some(s(&env, "@budi_lat")));
+    c.quitar_contacto(&id);
+    assert_eq!(c.contacto(&id), None);
+}
+
+#[test]
+#[should_panic]
+fn solo_el_dueno_fija_la_tarifa() {
+    let env = Env::default();
+    let id = env.register(Agentes, ());
+    let c = AgentesClient::new(&env, &id);
+    let dueno = Address::generate(&env);
+    env.mock_all_auths();
+    let a = c.registrar_agente(&dueno, &s(&env, "ipfs://a"));
+    env.set_auths(&[]);
+    c.fijar_tarifa_agente(&a, &10);
+}

@@ -65,6 +65,11 @@ enum Clave {
     Habilidades(u32),
     OperadorAgente(u32),
     Reportes(u32),
+    Disponible(u32),
+    TarifaAgente(u32),
+    Idioma(u32),
+    Ejemplos(u32),
+    Contacto(u32),
 }
 
 #[contracterror]
@@ -89,6 +94,10 @@ pub enum Error {
     SinOperador = 16,
     MotivoVacio = 17,
     AutoReporte = 18,
+    TarifaInvalida = 19,
+    SinEjemplo = 20,
+    YaTieneEjemplo = 21,
+    SinContacto = 22,
 }
 
 #[contractevent]
@@ -247,6 +256,61 @@ pub struct PerfilActualizado {
     #[topic]
     pub id: u32,
     pub uri: String,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DisponibilidadFijada {
+    #[topic]
+    pub id: u32,
+    pub disponible: bool,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TarifaAgenteFijada {
+    #[topic]
+    pub id: u32,
+    pub tarifa: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct IdiomaFijado {
+    #[topic]
+    pub id: u32,
+    pub idioma: Symbol,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EjemploAgregado {
+    #[topic]
+    pub id: u32,
+    pub uri: String,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EjemploQuitado {
+    #[topic]
+    pub id: u32,
+    pub uri: String,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContactoFijado {
+    #[topic]
+    pub id: u32,
+    pub contacto: String,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContactoQuitado {
+    #[topic]
+    pub id: u32,
 }
 
 #[contract]
@@ -533,6 +597,102 @@ impl Agentes {
         poner(&env, &Clave::Reportes(id), &reportes);
         AgenteReportado { id, quien, motivo, reportes }.publish(&env);
         Ok(reportes)
+    }
+
+    /// El dueño marca si el agente acepta trabajo nuevo ahora (disponible para contratar).
+    pub fn fijar_disponibilidad(env: Env, id: u32, disponible: bool) -> Result<(), Error> {
+        Self::agente(env.clone(), id)?.dueno.require_auth();
+        poner(&env, &Clave::Disponible(id), &disponible);
+        DisponibilidadFijada { id, disponible }.publish(&env);
+        Ok(())
+    }
+
+    /// El dueño publica la tarifa base del agente (en stroops por trabajo).
+    pub fn fijar_tarifa_agente(env: Env, id: u32, tarifa: i128) -> Result<(), Error> {
+        Self::agente(env.clone(), id)?.dueno.require_auth();
+        if tarifa <= 0 {
+            return Err(Error::TarifaInvalida);
+        }
+        poner(&env, &Clave::TarifaAgente(id), &tarifa);
+        TarifaAgenteFijada { id, tarifa }.publish(&env);
+        Ok(())
+    }
+
+    /// El dueño declara el idioma en que trabaja el agente (por ejemplo `es`).
+    pub fn fijar_idioma(env: Env, id: u32, idioma: Symbol) -> Result<(), Error> {
+        Self::agente(env.clone(), id)?.dueno.require_auth();
+        poner(&env, &Clave::Idioma(id), &idioma);
+        IdiomaFijado { id, idioma }.publish(&env);
+        Ok(())
+    }
+
+    /// El dueño agrega a su portafolio un enlace a un trabajo de ejemplo.
+    pub fn agregar_ejemplo(env: Env, id: u32, uri: String) -> Result<(), Error> {
+        Self::agente(env.clone(), id)?.dueno.require_auth();
+        if uri.is_empty() {
+            return Err(Error::UriVacia);
+        }
+        let mut es = Self::ejemplos(env.clone(), id);
+        if es.contains(&uri) {
+            return Err(Error::YaTieneEjemplo);
+        }
+        es.push_back(uri.clone());
+        poner(&env, &Clave::Ejemplos(id), &es);
+        EjemploAgregado { id, uri }.publish(&env);
+        Ok(())
+    }
+
+    /// El dueño quita un enlace del portafolio.
+    pub fn quitar_ejemplo(env: Env, id: u32, uri: String) -> Result<(), Error> {
+        Self::agente(env.clone(), id)?.dueno.require_auth();
+        let mut es = Self::ejemplos(env.clone(), id);
+        let i = es.first_index_of(&uri).ok_or(Error::SinEjemplo)?;
+        es.remove(i);
+        poner(&env, &Clave::Ejemplos(id), &es);
+        EjemploQuitado { id, uri }.publish(&env);
+        Ok(())
+    }
+
+    /// El dueño publica cómo contactar al agente (un enlace o un handle).
+    pub fn fijar_contacto(env: Env, id: u32, contacto: String) -> Result<(), Error> {
+        Self::agente(env.clone(), id)?.dueno.require_auth();
+        if contacto.is_empty() {
+            return Err(Error::UriVacia);
+        }
+        poner(&env, &Clave::Contacto(id), &contacto);
+        ContactoFijado { id, contacto }.publish(&env);
+        Ok(())
+    }
+
+    /// El dueño borra el contacto publicado.
+    pub fn quitar_contacto(env: Env, id: u32) -> Result<(), Error> {
+        Self::agente(env.clone(), id)?.dueno.require_auth();
+        if Self::contacto(env.clone(), id).is_none() {
+            return Err(Error::SinContacto);
+        }
+        env.storage().persistent().remove(&Clave::Contacto(id));
+        ContactoQuitado { id }.publish(&env);
+        Ok(())
+    }
+
+    pub fn disponible(env: Env, id: u32) -> bool {
+        env.storage().persistent().get(&Clave::Disponible(id)).unwrap_or(false)
+    }
+
+    pub fn tarifa_agente(env: Env, id: u32) -> Option<i128> {
+        env.storage().persistent().get(&Clave::TarifaAgente(id))
+    }
+
+    pub fn idioma(env: Env, id: u32) -> Option<Symbol> {
+        env.storage().persistent().get(&Clave::Idioma(id))
+    }
+
+    pub fn ejemplos(env: Env, id: u32) -> Vec<String> {
+        env.storage().persistent().get(&Clave::Ejemplos(id)).unwrap_or(Vec::new(&env))
+    }
+
+    pub fn contacto(env: Env, id: u32) -> Option<String> {
+        env.storage().persistent().get(&Clave::Contacto(id))
     }
 
     pub fn operador_agente(env: Env, id: u32) -> Option<Address> {

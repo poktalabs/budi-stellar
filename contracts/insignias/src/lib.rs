@@ -30,6 +30,7 @@ enum Clave {
     PorRuta(Address, Symbol),
     UriBase,
     Suspendida(u32),
+    Nivel(u32),
 }
 
 #[contracttype]
@@ -53,6 +54,7 @@ pub enum Error {
     DemasiadasInsignias = 4,
     YaSuspendida = 5,
     NoSuspendida = 6,
+    NivelInvalido = 7,
 }
 
 #[contractevent]
@@ -61,6 +63,14 @@ pub struct InsigniaSuspendida {
     #[topic]
     pub id: u32,
     pub motivo: String,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NivelFijado {
+    #[topic]
+    pub id: u32,
+    pub nivel: u32,
 }
 
 #[contractevent]
@@ -245,6 +255,26 @@ impl Insignias {
         env.storage().persistent().remove(&Clave::Suspendida(id));
         InsigniaRestaurada { id }.publish(&env);
         Ok(())
+    }
+
+    /// El emisor fija el nivel de una insignia (1 básico, 2 intermedio, 3 avanzado),
+    /// por ejemplo cuando la persona aprueba la siguiente edición del examen.
+    pub fn fijar_nivel(env: Env, id: u32, nivel: u32) -> Result<(), Error> {
+        Self::emisor(env.clone()).require_auth();
+        let i = Self::insignia(env.clone(), id)?;
+        if i.revocada {
+            return Err(Error::YaRevocada);
+        }
+        if nivel == 0 || nivel > 3 {
+            return Err(Error::NivelInvalido);
+        }
+        Self::guardar(&env, &Clave::Nivel(id), &nivel);
+        NivelFijado { id, nivel }.publish(&env);
+        Ok(())
+    }
+
+    pub fn nivel(env: Env, id: u32) -> u32 {
+        env.storage().persistent().get(&Clave::Nivel(id)).unwrap_or(1)
     }
 
     pub fn suspendida(env: Env, id: u32) -> bool {

@@ -203,3 +203,16 @@ fn suspender_y_restaurar_una_insignia() {
     client.restaurar_insignia(&1);
     assert!(client.tiene(&ana, &ruta));
 }
+
+#[test]
+fn el_emisor_fija_el_nivel_de_una_insignia() {
+    let (env, client, _) = setup();
+    env.mock_all_auths();
+    let ana = Address::generate(&env);
+    let id = client.otorgar(&ana, &symbol_short!("soroban1"));
+    assert_eq!(client.nivel(&id), 1);
+    client.fijar_nivel(&id, &2);
+    assert_eq!(client.nivel(&id), 2);
+    assert_eq!(client.try_fijar_nivel(&id, &4), Err(Ok(Error::NivelInvalido)));
+    assert_eq!(client.try_fijar_nivel(&99, &2), Err(Ok(Error::NoExiste)));
+}
