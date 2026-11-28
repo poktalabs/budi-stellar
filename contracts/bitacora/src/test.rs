@@ -136,6 +136,86 @@ fn publica_un_evento_por_hito() {
     );
 }
 
+#[test]
+fn corrige_un_hito_con_la_firma_del_builder() {
+    let (env, client) = setup();
+    env.mock_all_auths();
+    let builder = Address::generate(&env);
+    client.registrar(&builder, &String::from_str(&env, "Primer contrato"));
+    client.registrar(&builder, &String::from_str(&env, "Pruebas en verde"));
+    let nuevo = String::from_str(&env, "Mi primer contrato en Stellar");
+
+    client.corregir(&builder, &1, &nuevo);
+
+    assert_eq!(
+        env.auths(),
+        std::vec![(
+            builder.clone(),
+            AuthorizedInvocation {
+                function: AuthorizedFunction::Contract((
+                    client.address.clone(),
+                    Symbol::new(&env, "corregir"),
+                    (builder.clone(), 1u32, nuevo.clone()).into_val(&env),
+                )),
+                sub_invocations: std::vec![],
+            }
+        )]
+    );
+    assert_eq!(
+        client.hitos(&builder),
+        vec![&env, nuevo, String::from_str(&env, "Pruebas en verde")]
+    );
+    assert_eq!(client.contar(&builder), 2);
+}
+
+#[test]
+#[should_panic]
+fn sin_firma_no_corrige() {
+    let (env, client) = setup();
+    let builder = Address::generate(&env);
+    env.mock_all_auths();
+    client.registrar(&builder, &String::from_str(&env, "Hito"));
+    env.set_auths(&[]);
+    client.corregir(&builder, &1, &String::from_str(&env, "Otro"));
+}
+
+#[test]
+fn no_corrige_un_hito_que_no_existe_ni_con_texto_invalido() {
+    let (env, client) = setup();
+    env.mock_all_auths();
+    let builder = Address::generate(&env);
+    let hito = String::from_str(&env, "Hito");
+    assert_eq!(client.try_corregir(&builder, &1, &hito), Err(Ok(Error::HitoInexistente)));
+    client.registrar(&builder, &hito);
+    assert_eq!(client.try_corregir(&builder, &0, &hito), Err(Ok(Error::HitoInexistente)));
+    assert_eq!(client.try_corregir(&builder, &2, &hito), Err(Ok(Error::HitoInexistente)));
+    assert_eq!(
+        client.try_corregir(&builder, &1, &String::from_str(&env, "")),
+        Err(Ok(Error::HitoVacio))
+    );
+    let largo = "x".repeat(MAX_HITO as usize + 1);
+    assert_eq!(
+        client.try_corregir(&builder, &1, &String::from_str(&env, &largo)),
+        Err(Ok(Error::HitoMuyLargo))
+    );
+    assert_eq!(client.hitos(&builder), vec![&env, hito]);
+}
+
+#[test]
+fn publica_la_correccion_con_el_texto_de_antes() {
+    let (env, client) = setup();
+    env.mock_all_auths();
+    let builder = Address::generate(&env);
+    let antes = String::from_str(&env, "Demo");
+    let ahora = String::from_str(&env, "Demo en testnet");
+    client.registrar(&builder, &antes);
+
+    client.corregir(&builder, &1, &ahora);
+
+    let esperado = HitoCorregido { builder: builder.clone(), numero: 1, antes, ahora };
+    assert_eq!(env.events().all(), std::vec![esperado.to_xdr(&env, &client.address)]);
+}
+
 mod con_matricula {
     use super::*;
     use matricula::{Matricula, MatriculaClient as Escrow};

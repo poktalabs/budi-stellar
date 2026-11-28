@@ -50,6 +50,7 @@ pub enum Error {
     BitacoraLlena = 3,
     NoInscrito = 4,
     YaConfigurada = 5,
+    HitoInexistente = 6,
 }
 
 #[contractevent]
@@ -59,6 +60,16 @@ pub struct HitoRegistrado {
     pub builder: Address,
     pub numero: u32,
     pub hito: String,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HitoCorregido {
+    #[topic]
+    pub builder: Address,
+    pub numero: u32,
+    pub antes: String,
+    pub ahora: String,
 }
 
 #[contract]
@@ -127,6 +138,42 @@ impl Bitacora {
         }
         .publish(&env);
         Ok(numero)
+    }
+
+    /// Corrige el hito `numero` (empieza en 1) de `builder`. Solo el propio builder
+    /// firma; el texto nuevo pasa las mismas reglas que al registrar, y el evento
+    /// guarda el texto de antes para que la corrección quede a la vista.
+    pub fn corregir(env: Env, builder: Address, numero: u32, hito: String) -> Result<(), Error> {
+        builder.require_auth();
+        if hito.is_empty() {
+            return Err(Error::HitoVacio);
+        }
+        if hito.len() > MAX_HITO {
+            return Err(Error::HitoMuyLargo);
+        }
+        let clave = Clave::Hitos(builder.clone());
+        let mut hitos: Vec<String> = env
+            .storage()
+            .persistent()
+            .get(&clave)
+            .unwrap_or(Vec::new(&env));
+        if numero == 0 || numero > hitos.len() {
+            return Err(Error::HitoInexistente);
+        }
+        let antes = hitos.get_unchecked(numero - 1);
+        hitos.set(numero - 1, hito.clone());
+        env.storage().persistent().set(&clave, &hitos);
+        env.storage()
+            .persistent()
+            .extend_ttl(&clave, TTL_UMBRAL, TTL_EXTENDER);
+        HitoCorregido {
+            builder,
+            numero,
+            antes,
+            ahora: hito,
+        }
+        .publish(&env);
+        Ok(())
     }
 
     /// Todos los hitos de `builder`, del primero al último.
