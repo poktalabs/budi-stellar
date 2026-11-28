@@ -72,6 +72,7 @@ pub enum Error {
     PlazoNoVencido = 6,
     PlazoVencido = 7,
     CodigoInvalido = 8,
+    MismoAlumno = 9,
 }
 
 #[contractevent]
@@ -83,6 +84,24 @@ pub struct Inscrito {
     pub curso: Symbol,
     pub id: u32,
     pub monto: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Abandonado {
+    #[topic]
+    pub id: u32,
+    pub devuelto: i128,
+    pub para_budi: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InscripcionTransferida {
+    #[topic]
+    pub id: u32,
+    pub de: Address,
+    pub a: Address,
 }
 
 #[contractevent]
@@ -224,7 +243,56 @@ impl Matricula {
     }
 
     /// ¿`alumno` está en `curso` (depósito en custodia o curso terminado)?
-    pub fn inscrito(env: Env, alumno: Address, curso: Symbol) -> bool {
+/// El alumno deja el curso antes del plazo: recupera la mitad de su depósito y la otra
+    /// mitad se queda con Budi. Puede volver a inscribirse después. Firma el alumno.
+    pub fn abandonar(env: Env, id: u32) -> Result<i128, Error> {
+        let mut inscripcion = Self::inscripcion(env.clone(), id)?;
+        inscripcion.alumno.require_auth();
+        if inscripcion.estado != Estado::EnCustodia {
+            return Err(Error::NoEstaEnCustodia);
+        }
+        if env.ledger().timestamp() >= inscripcion.limite {
+            return Err(Error::PlazoVencido);
+        }
+        let devuelto = inscripcion.monto / 2;
+        let para_budi = inscripcion.monto - devuelto;
+        inscripcion.estado = Estado::Cobrada;
+        Self::guardar(&env, id, &inscripcion);
+        let t = Self::token(&env);
+        if devuelto > 0 {
+            t.transfer(&env.current_contract_address(), &inscripcion.alumno, &devuelto);
+        }
+        if para_budi > 0 {
+            t.transfer(&env.current_contract_address(), &Self::admin(env.clone()), &para_budi);
+        }
+        Abandonado { id, devuelto, para_budi }.publish(&env);
+        Ok(devuelto)
+    }
+
+    /// El alumno le pasa su lugar (y su depósito en custodia) a otra persona que no
+    /// esté inscrita en ese curso. Firma el alumno.
+    pub fn transferir_inscripcion(env: Env, id: u32, a: Address) -> Result<(), Error> {
+        let mut inscripcion = Self::inscripcion(env.clone(), id)?;
+        inscripcion.alumno.require_auth();
+        if inscripcion.estado != Estado::EnCustodia {
+            return Err(Error::NoEstaEnCustodia);
+        }
+        if inscripcion.alumno == a {
+            return Err(Error::MismoAlumno);
+        }
+        Self::sin_inscripcion_activa(&env, &a, &inscripcion.curso)?;
+        let de = inscripcion.alumno.clone();
+        env.storage().persistent().remove(&Clave::Activa(de.clone(), inscripcion.curso.clone()));
+        let activa = Clave::Activa(a.clone(), inscripcion.curso.clone());
+        env.storage().persistent().set(&activa, &id);
+        env.storage().persistent().extend_ttl(&activa, TTL_UMBRAL, TTL_EXTENDER);
+        inscripcion.alumno = a.clone();
+        Self::guardar(&env, id, &inscripcion);
+        InscripcionTransferida { id, de, a }.publish(&env);
+        Ok(())
+    }
+
+        pub fn inscrito(env: Env, alumno: Address, curso: Symbol) -> bool {
         match env
             .storage()
             .persistent()

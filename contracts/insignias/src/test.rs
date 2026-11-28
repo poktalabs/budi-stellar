@@ -126,3 +126,20 @@ fn coleccion_y_emisor() {
     );
     assert_eq!(client.try_owner_of(&1), Err(Ok(Error::NoExiste)));
 }
+
+#[test]
+fn el_titular_renuncia_y_puede_volver_a_ganarla() {
+    let (env, c, _emisor) = setup();
+    env.mock_all_auths();
+    let ana = Address::generate(&env);
+    let ruta = symbol_short!("soroban");
+    let id = c.otorgar(&ana, &ruta);
+    c.renunciar(&id);
+    assert!(!c.tiene(&ana, &ruta));
+    assert_eq!(c.balance(&ana), 0);
+    assert_eq!(c.try_insignia(&id), Err(Ok(Error::NoExiste)));
+    assert_eq!(c.try_renunciar(&id), Err(Ok(Error::NoExiste)));
+    let nueva = c.otorgar(&ana, &ruta);
+    assert!(c.tiene(&ana, &ruta));
+    assert!(nueva > id);
+}

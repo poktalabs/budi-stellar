@@ -165,3 +165,36 @@ fn codigos_solo_para_cursos_que_existen() {
         Err(Ok(Error::CursoNoExiste))
     );
 }
+
+#[test]
+fn abandonar_regresa_la_mitad_y_deja_volver_a_inscribirse() {
+    let c = caso();
+    let id = c.m.inscribir(&c.alumno, &symbol_short!("soroban"));
+    assert_eq!(c.m.abandonar(&id), PRECIO / 2);
+    assert_eq!(c.token.balance(&c.alumno), PRECIO * 2 + PRECIO / 2);
+    assert_eq!(c.token.balance(&c.admin), PRECIO / 2);
+    assert_eq!(c.m.try_abandonar(&id), Err(Ok(Error::NoEstaEnCustodia)));
+    assert!(!c.m.inscrito(&c.alumno, &symbol_short!("soroban")));
+    c.m.inscribir(&c.alumno, &symbol_short!("soroban"));
+}
+
+#[test]
+fn no_se_abandona_despues_del_plazo() {
+    let c = caso();
+    let id = c.m.inscribir(&c.alumno, &symbol_short!("soroban"));
+    c.env.ledger().with_mut(|l| l.timestamp += PLAZO);
+    assert_eq!(c.m.try_abandonar(&id), Err(Ok(Error::PlazoVencido)));
+}
+
+#[test]
+fn el_lugar_se_transfiere_a_otra_persona() {
+    let c = caso();
+    let id = c.m.inscribir(&c.alumno, &symbol_short!("soroban"));
+    let beto = Address::generate(&c.env);
+    c.m.transferir_inscripcion(&id, &beto);
+    assert!(c.m.inscrito(&beto, &symbol_short!("soroban")));
+    assert!(!c.m.inscrito(&c.alumno, &symbol_short!("soroban")));
+    assert_eq!(c.m.try_transferir_inscripcion(&id, &beto), Err(Ok(Error::MismoAlumno)));
+    c.m.completar(&id);
+    assert_eq!(c.token.balance(&beto), PRECIO);
+}

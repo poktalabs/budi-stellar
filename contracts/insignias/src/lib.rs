@@ -72,6 +72,16 @@ pub struct InsigniaRevocada {
     pub motivo: String,
 }
 
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InsigniaRenunciada {
+    #[topic]
+    pub titular: Address,
+    #[topic]
+    pub ruta: Symbol,
+    pub id: u32,
+}
+
 #[contract]
 pub struct Insignias;
 
@@ -170,6 +180,26 @@ impl Insignias {
             }
         }
         todas
+    }
+
+    /// El titular renuncia a su insignia (no la quiere en su perfil). Deja de contar como
+    /// licencia y sale de su lista; puede volver a ganarla. Firma el titular.
+    pub fn renunciar(env: Env, id: u32) -> Result<(), Error> {
+        let insignia = Self::insignia(env.clone(), id)?;
+        insignia.titular.require_auth();
+        if insignia.revocada {
+            return Err(Error::YaRevocada);
+        }
+        let del_titular = Clave::DelTitular(insignia.titular.clone());
+        let mut ids: Vec<u32> = env.storage().persistent().get(&del_titular).unwrap_or(Vec::new(&env));
+        if let Some(i) = ids.first_index_of(id) {
+            ids.remove(i);
+        }
+        Self::guardar(&env, &del_titular, &ids);
+        env.storage().persistent().remove(&Clave::PorRuta(insignia.titular.clone(), insignia.ruta.clone()));
+        env.storage().persistent().remove(&Clave::Insignia(id));
+        InsigniaRenunciada { titular: insignia.titular, ruta: insignia.ruta, id }.publish(&env);
+        Ok(())
     }
 
     /// Verdadero si `titular` tiene la insignia de `ruta` y no está revocada.
