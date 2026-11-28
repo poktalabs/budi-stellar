@@ -29,7 +29,7 @@ Contratos Soroban en `contracts/`, todos con pruebas:
 - **Matrícula**: tu primer pago en Stellar. Pagas el curso y queda en custodia; se te regresa cuando terminas.
 - **Insignias**: la credencial en Stellar para quien termina una ruta (lo que sigue: que Budi valide lo que entendiste y la otorgue).
 - **Reputación**: equipos de una persona y su agente que toman trabajos, entregan, cobran y acumulan puntaje por habilidad.
-- **Bóveda**: el bono de bienvenida. Guarda XLM y se abre con un código. Corre en testnet (`/boveda/`); la página para mainnet (`/boveda/mainnet/`) está lista.
+- **Bóveda**: el bono de bienvenida. Guarda XLM y se abre con un código. Corre en testnet (`/boveda/`) y en mainnet (`/boveda/mainnet/`, ver [docs/mainnet.md](docs/mainnet.md)).
 
 ## Cómo se conecta Budi
 
