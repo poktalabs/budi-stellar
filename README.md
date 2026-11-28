@@ -1,23 +1,35 @@
 # Budi para Stellar
 
-Budi te enseña a construir en Stellar, te da dónde practicar sin instalar nada y convierte lo que construyes en reputación con la que te contratan, a ti y a tu agente Budi.
+**Lo difícil, fácil de aprender y ganar.** Budi para Stellar es educación nativa de IA, en español, para quien quiere aprender IA y blockchain: aprendes construyendo, tu agente Budi escribe el código y tú demuestras que entiendes los conceptos. Lo que construyes corre en Stellar.
 
-1. **Aprende.** Explicadores animados en español, de qué es Stellar a tu primer contrato Soroban, con sus fuentes oficiales.
-2. **Practica.** Cada lección termina en tu Budi workspace: una sesión en [Tenki](https://tenki.cloud) con Rust, Stellar CLI y VS Code en el navegador, que tu agente Budi prepara desde la app. De cero a un contrato en testnet en 64 segundos.
-3. **Demuestra.** Al terminar una ruta recibes una insignia en Stellar. Tu reputación en cada habilidad crece solo con trabajo real, y quien busca ayuda contrata a tu equipo: tú y tu agente Budi.
-
-Lo construimos por etapas: primero aprender y practicar (este repo, hoy), después las insignias, después contratar equipos persona más agente, y al final empresas que capacitan y contratan con Budi.
+**Demo (73 s):** https://youtu.be/KZla30awd5U · **Pruébalo:** https://stellar.budi.lat
 
 Proyecto para Ship It: Builder Challenge (BAF × Stellar México, 23 al 27 de noviembre de 2026).
 
-## Qué vamos a lanzar el 27 de noviembre
+## Qué es
 
-Budi como la plataforma para aprender a construir en Stellar. Hoy los recursos existen pero están dispersos (Stellar Learn, la documentación, Stellar Quest, Stellar Lab, el Community Fund); Budi los convierte en un camino guiado. El 27 lanzamos:
+Los recursos para aprender Stellar existen, pero están dispersos y casi todos en inglés. Hoy, además, la IA escribe el código: lo que vale es entenderlo. Budi para Stellar junta las dos cosas en un aula:
 
-1. **Una ruta de aprendizaje en español**: explicadores animados que van de qué es Stellar a tu primer contrato Soroban, cada uno con sus fuentes oficiales.
-2. **Tu Budi workspace**: cada lección termina en un ejercicio que abres en un entorno listo en Tenki (Rust, Stellar CLI y VS Code en el navegador), sin instalar nada. Ya funciona: ver «Cómo funciona».
-3. **Tu agente Budi como guía**: te acompaña de la primera lección a desplegar tu primer contrato en testnet, y te conecta con lo que sigue (Stellar Quest, Stellar Community Fund, Stellar APEX).
-4. **Un demo de dos minutos** con el recorrido completo: explicador, workspace y contrato en testnet.
+1. **Aprende.** Cada lección es un explicador en español con sus fuentes oficiales, de qué es Stellar a tu primer contrato Soroban.
+2. **Construye con tu agente.** Entras con tu cuenta de Budi y en menos de un minuto tienes tu espacio de trabajo en [Tenki](https://tenki.cloud): VS Code en el navegador con Rust, Stellar CLI y tu agente Budi adentro. Tú no escribes el código: le pides al agente lo que quieres y, antes de escribir una línea, te pregunta qué entiendes del concepto y anota tu respuesta como evidencia (`EVIDENCIA.md`).
+3. **Queda en la red.** Las pruebas corren, el contrato se despliega en testnet y el aula lee tu avance directo de Stellar.
+
+## Cómo se usa
+
+1. Abre https://stellar.budi.lat y entra a la lección 1, «Tu primer contrato Soroban».
+2. Lee el explicador y abre tu espacio de trabajo (botón Editor) con tu cuenta de Budi.
+3. Pídele al agente el cambio que quieres en tu Bitácora, responde sus preguntas y déjalo escribir, probar y desplegar.
+4. Pega la dirección de tu Bitácora en el aula: cuando tiene al menos un hito en testnet, la lección queda completa.
+
+## Qué corre en Stellar
+
+Contratos Soroban en `contracts/`, todos con pruebas:
+
+- **Bitácora**: tus hitos de aprendizaje, firmados por ti (`registrar`, `corregir`, `hitos`). Puede pedir que hayas pagado el curso en Matrícula.
+- **Matrícula**: tu primer pago en Stellar. Pagas el curso y queda en custodia; se te regresa cuando terminas.
+- **Insignias**: la credencial que recibes al terminar una ruta.
+- **Reputación**: equipos de una persona y su agente que toman trabajos, entregan, cobran y acumulan puntaje por habilidad.
+- **Bóveda**: el bono de bienvenida. Guarda XLM y se abre con un código. Corre en testnet (`/boveda/`) y en mainnet (`/boveda/mainnet/`).
 
 ## Cómo se conecta Budi
 
