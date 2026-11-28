@@ -112,6 +112,23 @@ pub struct PremioAmpliado {
     pub premio: i128,
 }
 
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PostulacionRetirada {
+    #[topic]
+    pub reto: u32,
+    pub agente: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PremioDividido {
+    #[topic]
+    pub reto: u32,
+    pub agentes: Vec<u32>,
+    pub cada_uno: i128,
+}
+
 #[contract]
 pub struct Retos;
 
@@ -211,6 +228,54 @@ impl Retos {
         poner(&env, reto, &r);
         PremioAmpliado { reto, extra, premio: r.premio }.publish(&env);
         Ok(r.premio)
+    }
+
+    /// El dueño de un agente lo baja de un reto abierto.
+    pub fn retirar_postulacion(env: Env, reto: u32, agente: u32) -> Result<(), Error> {
+        let mut r = Self::reto(env.clone(), reto)?;
+        AgentesClient::new(&env, &Self::agentes(&env)).dueno(&agente).require_auth();
+        if r.estado != EstadoReto::Abierto {
+            return Err(Error::RetoCerrado);
+        }
+        let i = r.postulantes.first_index_of(agente).ok_or(Error::NoPostulado)?;
+        r.postulantes.remove(i);
+        poner(&env, reto, &r);
+        PostulacionRetirada { reto, agente }.publish(&env);
+        Ok(())
+    }
+
+    /// El creador reparte el premio en partes iguales entre varios agentes postulados
+    /// (cada parte va a la cuenta de su agente; el sobrante de la división, al primero).
+    pub fn dividir_premio(env: Env, reto: u32, ganadores: Vec<u32>) -> Result<i128, Error> {
+        let mut r = Self::reto(env.clone(), reto)?;
+        r.creador.require_auth();
+        if r.estado != EstadoReto::Abierto {
+            return Err(Error::RetoCerrado);
+        }
+        let n = ganadores.len() as i128;
+        if n < 2 {
+            return Err(Error::NoPostulado);
+        }
+        for g in ganadores.iter() {
+            if !r.postulantes.contains(g) {
+                return Err(Error::NoPostulado);
+            }
+        }
+        let agentes = Self::agentes(&env);
+        let cuentas: Address = env.storage().instance().get(&Clave::Cuentas).unwrap();
+        let cada_uno = r.premio / n;
+        let sobra = r.premio - cada_uno * n;
+        r.estado = EstadoReto::Pagado;
+        r.ganador = ganadores.get_unchecked(0);
+        poner(&env, reto, &r);
+        let t = token::Client::new(&env, &r.token);
+        for (i, g) in ganadores.iter().enumerate() {
+            let cuenta = CuentasClient::new(&env, &cuentas).cuenta_de(&agentes, &g);
+            let monto = if i == 0 { cada_uno + sobra } else { cada_uno };
+            t.transfer(&env.current_contract_address(), &cuenta, &monto);
+        }
+        PremioDividido { reto, agentes: ganadores, cada_uno }.publish(&env);
+        Ok(cada_uno)
     }
 
     pub fn reto(env: Env, id: u32) -> Result<Reto, Error> {

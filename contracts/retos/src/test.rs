@@ -100,3 +100,28 @@ fn un_patrocinador_amplia_el_premio() {
     assert_eq!(c.xlm.balance(&cuenta), 500);
     assert_eq!(c.retos.try_ampliar_premio(&id, &patrocinador, &0), Err(Ok(Error::MontoInvalido)));
 }
+
+#[test]
+fn un_agente_retira_su_postulacion() {
+    let c = caso();
+    let id = c.retos.publicar_reto(&c.creador, &c.xlm.address, &300, &uri(&c.env));
+    c.retos.postular(&id, &c.agente);
+    c.retos.retirar_postulacion(&id, &c.agente);
+    assert_eq!(c.retos.reto(&id).postulantes.len(), 0);
+    assert_eq!(c.retos.try_retirar_postulacion(&id, &c.agente), Err(Ok(Error::NoPostulado)));
+    assert_eq!(c.retos.try_elegir_ganador(&id, &c.agente), Err(Ok(Error::NoPostulado)));
+}
+
+#[test]
+fn el_premio_se_divide_entre_las_cuentas_de_varios_agentes() {
+    let c = caso();
+    let otro = c.agentes.registrar_agente(&Address::generate(&c.env), &String::from_str(&c.env, "uri"));
+    let id = c.retos.publicar_reto(&c.creador, &c.xlm.address, &301, &uri(&c.env));
+    c.retos.postular(&id, &c.agente);
+    c.retos.postular(&id, &otro);
+    let lista = soroban_sdk::vec![&c.env, c.agente, otro];
+    assert_eq!(c.retos.dividir_premio(&id, &lista), 150);
+    assert_eq!(c.xlm.balance(&c.cuentas.cuenta_de(&c.agentes.address, &c.agente)), 151);
+    assert_eq!(c.xlm.balance(&c.cuentas.cuenta_de(&c.agentes.address, &otro)), 150);
+    assert_eq!(c.retos.try_dividir_premio(&id, &lista), Err(Ok(Error::RetoCerrado)));
+}

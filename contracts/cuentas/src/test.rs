@@ -89,3 +89,28 @@ fn la_cuenta_actua_en_otro_contrato_como_firmante() {
     cta.ejecutar(&c.agentes.address, &Symbol::new(&c.env, "dar_feedback"), &args);
     assert_eq!(c.agentes.feedback(&otro, &0).cliente, dir);
 }
+
+#[test]
+fn la_cuenta_paga_en_lote_aprueba_gastos_y_se_vacia() {
+    let c = caso();
+    let dir = c.registro.crear_cuenta(&c.agentes.address, &c.id);
+    let cta = cuenta::Client::new(&c.env, &dir);
+    let sac = c.env.register_stellar_asset_contract_v2(Address::generate(&c.env));
+    StellarAssetClient::new(&c.env, &sac.address()).mint(&dir, &1_000);
+    let xlm = TokenClient::new(&c.env, &sac.address());
+    let (ana, beto) = (Address::generate(&c.env), Address::generate(&c.env));
+    let pagos = vec![&c.env, (ana.clone(), 100i128), (beto.clone(), 50i128)];
+    assert_eq!(cta.pagar_lote(&sac.address(), &pagos), 150);
+    assert_eq!(xlm.balance(&ana), 100);
+    assert_eq!(xlm.balance(&beto), 50);
+
+    let servicio = Address::generate(&c.env);
+    cta.aprobar_gasto(&sac.address(), &servicio, &200, &1_000);
+    assert_eq!(xlm.allowance(&dir, &servicio), 200);
+    xlm.transfer_from(&servicio, &dir, &servicio, &120);
+    assert_eq!(xlm.balance(&servicio), 120);
+
+    assert_eq!(cta.retirar_todo(&sac.address(), &c.dueno), 730);
+    assert_eq!(xlm.balance(&dir), 0);
+    assert!(cta.try_retirar_todo(&sac.address(), &c.dueno).is_err());
+}

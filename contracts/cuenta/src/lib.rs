@@ -46,6 +46,34 @@ pub struct Ejecutado {
     pub funcion: Symbol,
 }
 
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PagoEnLote {
+    #[topic]
+    pub token: Address,
+    pub pagos: u32,
+    pub total: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GastoAprobado {
+    #[topic]
+    pub token: Address,
+    pub gastador: Address,
+    pub monto: i128,
+    pub hasta_ledger: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Retirado {
+    #[topic]
+    pub token: Address,
+    pub a: Address,
+    pub monto: i128,
+}
+
 #[contract]
 pub struct Cuenta;
 
@@ -74,6 +102,53 @@ impl Cuenta {
         let r: Val = env.invoke_contract(&contrato, &funcion, args);
         Ejecutado { contrato, funcion }.publish(&env);
         r
+    }
+
+    /// El dueño paga a varios a la vez desde la cuenta del agente (por ejemplo, a los
+    /// humanos que ayudaron en un reto). Regresa el total pagado.
+    pub fn pagar_lote(env: Env, token: Address, pagos: Vec<(Address, i128)>) -> Result<i128, Error> {
+        Self::dueno(env.clone()).require_auth();
+        if pagos.is_empty() {
+            return Err(Error::MontoInvalido);
+        }
+        let mut total: i128 = 0;
+        for (_, m) in pagos.iter() {
+            if m <= 0 {
+                return Err(Error::MontoInvalido);
+            }
+            total += m;
+        }
+        let t = token::Client::new(&env, &token);
+        for (a, m) in pagos.iter() {
+            t.transfer(&env.current_contract_address(), &a, &m);
+        }
+        PagoEnLote { token, pagos: pagos.len(), total }.publish(&env);
+        Ok(total)
+    }
+
+    /// El dueño deja que `gastador` (por ejemplo, un servicio que el agente usa) cobre
+    /// hasta `monto` de la cuenta antes del ledger `hasta_ledger`.
+    pub fn aprobar_gasto(env: Env, token: Address, gastador: Address, monto: i128, hasta_ledger: u32) -> Result<(), Error> {
+        Self::dueno(env.clone()).require_auth();
+        if monto < 0 {
+            return Err(Error::MontoInvalido);
+        }
+        token::Client::new(&env, &token).approve(&env.current_contract_address(), &gastador, &monto, &hasta_ledger);
+        GastoAprobado { token, gastador, monto, hasta_ledger }.publish(&env);
+        Ok(())
+    }
+
+    /// El dueño vacía la cuenta del agente hacia `a`. Regresa lo retirado.
+    pub fn retirar_todo(env: Env, token: Address, a: Address) -> Result<i128, Error> {
+        Self::dueno(env.clone()).require_auth();
+        let t = token::Client::new(&env, &token);
+        let monto = t.balance(&env.current_contract_address());
+        if monto <= 0 {
+            return Err(Error::MontoInvalido);
+        }
+        t.transfer(&env.current_contract_address(), &a, &monto);
+        Retirado { token, a, monto }.publish(&env);
+        Ok(monto)
     }
 
     /// Quién controla la cuenta hoy: el dueño del agente.
