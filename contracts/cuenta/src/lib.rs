@@ -15,6 +15,16 @@ use soroban_sdk::{
 enum Clave {
     Agentes,
     Agente,
+    Operador,
+}
+
+/// La llave con la que el agente opera solo (su runtime), con un tope por pago.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Operador {
+    pub llave: Address,
+    pub token: Address,
+    pub tope_por_pago: i128,
 }
 
 #[contractclient(name = "AgentesClient")]
@@ -27,6 +37,8 @@ pub trait AgentesApi {
 #[repr(u32)]
 pub enum Error {
     MontoInvalido = 1,
+    SinOperador = 2,
+    ExcedeTope = 3,
 }
 
 #[contractevent]
@@ -70,6 +82,39 @@ pub struct GastoAprobado {
 pub struct Retirado {
     #[topic]
     pub token: Address,
+    pub a: Address,
+    pub monto: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GastoRevocado {
+    #[topic]
+    pub token: Address,
+    pub gastador: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OperadorFijado {
+    #[topic]
+    pub llave: Address,
+    pub token: Address,
+    pub tope_por_pago: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OperadorQuitado {
+    #[topic]
+    pub llave: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PagoDelOperador {
+    #[topic]
+    pub llave: Address,
     pub a: Address,
     pub monto: i128,
 }
@@ -164,6 +209,57 @@ impl Cuenta {
         Ok(monto)
     }
 
+    /// El dueño cancela un permiso de gasto antes de que venza (deja la aprobación en cero).
+    pub fn revocar_gasto(env: Env, token: Address, gastador: Address) {
+        Self::dueno(env.clone()).require_auth();
+        let ledger = env.ledger().sequence();
+        token::Client::new(&env, &token).approve(&env.current_contract_address(), &gastador, &0, &ledger);
+        GastoRevocado { token, gastador }.publish(&env);
+    }
+
+    /// El dueño le da al agente una llave propia (su runtime) para pagar solo, sin que el
+    /// dueño firme cada pago, pero nunca más de `tope_por_pago` por pago y solo en `token`.
+    /// Llamarla otra vez rota la llave o cambia el tope.
+    pub fn fijar_operador(env: Env, llave: Address, token: Address, tope_por_pago: i128) -> Result<(), Error> {
+        Self::dueno(env.clone()).require_auth();
+        if tope_por_pago <= 0 {
+            return Err(Error::MontoInvalido);
+        }
+        let op = Operador { llave: llave.clone(), token: token.clone(), tope_por_pago };
+        env.storage().instance().set(&Clave::Operador, &op);
+        OperadorFijado { llave, token, tope_por_pago }.publish(&env);
+        Ok(())
+    }
+
+    /// El dueño le quita al agente su llave de operador (por ejemplo, si se filtró).
+    pub fn quitar_operador(env: Env) -> Result<(), Error> {
+        Self::dueno(env.clone()).require_auth();
+        let op: Operador = env.storage().instance().get(&Clave::Operador).ok_or(Error::SinOperador)?;
+        env.storage().instance().remove(&Clave::Operador);
+        OperadorQuitado { llave: op.llave }.publish(&env);
+        Ok(())
+    }
+
+    /// El agente paga solo con su llave de operador, dentro del tope que fijó el dueño.
+    pub fn pago_operador(env: Env, a: Address, monto: i128) -> Result<(), Error> {
+        let op: Operador = env.storage().instance().get(&Clave::Operador).ok_or(Error::SinOperador)?;
+        op.llave.require_auth();
+        if monto <= 0 {
+            return Err(Error::MontoInvalido);
+        }
+        if monto > op.tope_por_pago {
+            return Err(Error::ExcedeTope);
+        }
+        token::Client::new(&env, &op.token).transfer(&env.current_contract_address(), &a, &monto);
+        PagoDelOperador { llave: op.llave, a, monto }.publish(&env);
+        Ok(())
+    }
+
+    /// La llave de operador del agente, si tiene.
+    pub fn operador(env: Env) -> Option<Operador> {
+        env.storage().instance().get(&Clave::Operador)
+    }
+
     /// Quién controla la cuenta hoy: el dueño del agente.
     pub fn dueno(env: Env) -> Address {
         let agentes: Address = env.storage().instance().get(&Clave::Agentes).unwrap();
@@ -178,3 +274,6 @@ impl Cuenta {
         )
     }
 }
+
+#[cfg(test)]
+mod test;

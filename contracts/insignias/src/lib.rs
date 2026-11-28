@@ -28,6 +28,7 @@ enum Clave {
     Insignia(u32),
     DelTitular(Address),
     PorRuta(Address, Symbol),
+    UriBase,
 }
 
 #[contracttype]
@@ -80,6 +81,12 @@ pub struct InsigniaRenunciada {
     #[topic]
     pub ruta: Symbol,
     pub id: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UriFijada {
+    pub uri_base: String,
 }
 
 #[contract]
@@ -235,6 +242,47 @@ impl Insignias {
     /// Vista NFT: símbolo de la colección.
     pub fn symbol(env: Env) -> String {
         String::from_str(&env, "BUDI")
+    }
+
+    /// El emisor fija dónde vive la metadata (imagen y descripción) de las insignias, para
+    /// que las wallets las muestren. Cada insignia apunta a `uri_base` + su id + ".json".
+    pub fn fijar_uri(env: Env, uri_base: String) {
+        Self::emisor(env.clone()).require_auth();
+        env.storage().instance().set(&Clave::UriBase, &uri_base);
+        UriFijada { uri_base }.publish(&env);
+    }
+
+    /// Vista NFT: la metadata de la insignia `id` (base fijada por el emisor + id + ".json").
+    pub fn token_uri(env: Env, id: u32) -> Result<String, Error> {
+        let insignia = Self::insignia(env.clone(), id)?;
+        let base: String = env
+            .storage()
+            .instance()
+            .get(&Clave::UriBase)
+            .unwrap_or(String::from_str(&env, ""));
+        // Dígitos del id, al revés y luego en orden.
+        let mut digitos = [0u8; 10];
+        let mut n = insignia.id;
+        let mut d = 0usize;
+        loop {
+            digitos[d] = b'0' + (n % 10) as u8;
+            d += 1;
+            n /= 10;
+            if n == 0 {
+                break;
+            }
+        }
+        let mut buf = [0u8; 256];
+        let largo_base = base.len() as usize;
+        if largo_base + d + 5 > buf.len() {
+            return Ok(base);
+        }
+        base.copy_into_slice(&mut buf[..largo_base]);
+        for i in 0..d {
+            buf[largo_base + i] = digitos[d - 1 - i];
+        }
+        buf[largo_base + d..largo_base + d + 5].copy_from_slice(b".json");
+        Ok(String::from_bytes(&env, &buf[..largo_base + d + 5]))
     }
 
     /// La dirección que puede otorgar y revocar insignias.

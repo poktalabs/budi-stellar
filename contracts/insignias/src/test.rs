@@ -143,3 +143,19 @@ fn el_titular_renuncia_y_puede_volver_a_ganarla() {
     assert!(c.tiene(&ana, &ruta));
     assert!(nueva > id);
 }
+
+#[test]
+fn el_emisor_fija_la_uri_y_cada_insignia_apunta_a_su_metadata() {
+    let (env, c, emisor) = setup();
+    env.mock_all_auths();
+    let ana = Address::generate(&env);
+    let id = c.otorgar(&ana, &symbol_short!("soroban"));
+    for _ in 0..11 {
+        c.otorgar(&Address::generate(&env), &symbol_short!("soroban"));
+    }
+    c.fijar_uri(&String::from_str(&env, "https://stellar.budi.lat/insignias/"));
+    assert_eq!(env.auths()[0].0, emisor);
+    assert_eq!(c.token_uri(&id), String::from_str(&env, "https://stellar.budi.lat/insignias/1.json"));
+    assert_eq!(c.token_uri(&12), String::from_str(&env, "https://stellar.budi.lat/insignias/12.json"));
+    assert_eq!(c.try_token_uri(&99), Err(Ok(Error::NoExiste)));
+}
