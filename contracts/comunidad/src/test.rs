@@ -1,0 +1,97 @@
+extern crate std;
+
+use super::*;
+use soroban_sdk::testutils::Address as _;
+
+fn s(env: &Env, t: &str) -> String {
+    String::from_str(env, t)
+}
+
+fn setup() -> (Env, ComunidadClient<'static>) {
+    let env = Env::default();
+    let id = env.register(Comunidad, ());
+    let client = ComunidadClient::new(&env, &id);
+    (env, client)
+}
+
+#[test]
+fn grupo_privado_invitar_unirse_salir_expulsar_transferir_y_cerrar() {
+    let (env, c) = setup();
+    env.mock_all_auths();
+    let (d, ana, beto) = (Address::generate(&env), Address::generate(&env), Address::generate(&env));
+    assert_eq!(c.try_crear_grupo_estudio(&d, &s(&env, ""), &true), Err(Ok(Error::NombreVacio)));
+    let g = c.crear_grupo_estudio(&d, &s(&env, "Soroban desde cero"), &true);
+    assert_eq!(g, 1);
+    assert_eq!(c.try_unirse_grupo_estudio(&ana, &g), Err(Ok(Error::SinInvitacion)));
+    assert_eq!(c.try_invitar_a_grupo(&ana, &g, &beto), Err(Ok(Error::NoEsDueno)));
+    c.invitar_a_grupo(&d, &g, &ana);
+    c.invitar_a_grupo(&d, &g, &beto);
+    c.unirse_grupo_estudio(&ana, &g);
+    c.unirse_grupo_estudio(&beto, &g);
+    assert_eq!(c.try_unirse_grupo_estudio(&ana, &g), Err(Ok(Error::YaEsMiembro)));
+    assert_eq!(c.grupo(&g).unwrap().miembros.len(), 3);
+    assert_eq!(c.try_salir_grupo_estudio(&d, &g), Err(Ok(Error::DuenoNoSale)));
+    c.salir_grupo_estudio(&beto, &g);
+    assert_eq!(c.try_salir_grupo_estudio(&beto, &g), Err(Ok(Error::NoEsMiembro)));
+    c.expulsar_de_grupo(&d, &g, &ana);
+    assert_eq!(c.grupo(&g).unwrap().miembros.len(), 1);
+    assert_eq!(c.try_transferir_grupo(&d, &g, &ana), Err(Ok(Error::NoEsMiembro)));
+    c.invitar_a_grupo(&d, &g, &ana);
+    c.unirse_grupo_estudio(&ana, &g);
+    c.transferir_grupo(&d, &g, &ana);
+    assert_eq!(c.grupo(&g).unwrap().dueno, ana);
+    assert_eq!(c.try_cerrar_grupo_estudio(&d, &g), Err(Ok(Error::NoEsDueno)));
+    c.cerrar_grupo_estudio(&ana, &g);
+    assert_eq!(c.try_unirse_grupo_estudio(&beto, &g), Err(Ok(Error::GrupoCerrado)));
+    assert_eq!(c.try_hacer_pregunta(&ana, &g, &s(&env, "¿Sigue abierto?")), Err(Ok(Error::GrupoCerrado)));
+}
+
+#[test]
+fn foro_preguntar_responder_aceptar_votar_fijar_reportar_y_ocultar() {
+    let (env, c) = setup();
+    env.mock_all_auths();
+    let (d, ana, beto, fuera) = (Address::generate(&env), Address::generate(&env), Address::generate(&env), Address::generate(&env));
+    let g = c.crear_grupo_estudio(&d, &s(&env, "IA y Stellar"), &false);
+    c.unirse_grupo_estudio(&ana, &g);
+    c.unirse_grupo_estudio(&beto, &g);
+    assert_eq!(c.try_hacer_pregunta(&fuera, &g, &s(&env, "Hola")), Err(Ok(Error::NoEsMiembro)));
+    assert_eq!(c.try_hacer_pregunta(&ana, &g, &s(&env, "")), Err(Ok(Error::TextoVacio)));
+    let p = c.hacer_pregunta(&ana, &g, &s(&env, "¿Qué es require_auth?"));
+    let r = c.responder_pregunta(&beto, &p, &s(&env, "Pide la firma de esa cuenta."));
+    assert_eq!(c.try_aceptar_respuesta(&beto, &p, &r), Err(Ok(Error::NoEsAutor)));
+    c.aceptar_respuesta(&ana, &p, &r);
+    assert_eq!(c.pregunta(&p).unwrap().aceptada, Some(r));
+    assert_eq!(c.try_votar_respuesta(&beto, &r), Err(Ok(Error::VotoPropio)));
+    assert_eq!(c.votar_respuesta(&ana, &r), 1);
+    assert_eq!(c.try_votar_respuesta(&ana, &r), Err(Ok(Error::YaVoto)));
+    assert_eq!(c.votar_respuesta(&d, &r), 2);
+    assert_eq!(c.try_fijar_pregunta(&ana, &p, &true), Err(Ok(Error::NoEsDueno)));
+    c.fijar_pregunta(&d, &p, &true);
+    assert!(c.pregunta(&p).unwrap().fijada);
+    assert_eq!(c.reportar_pregunta(&beto, &p), 1);
+    assert_eq!(c.try_reportar_pregunta(&beto, &p), Err(Ok(Error::YaReportada)));
+    c.ocultar_pregunta(&d, &p, &true);
+    assert_eq!(c.try_responder_pregunta(&d, &p, &s(&env, "Otra")), Err(Ok(Error::PreguntaOculta)));
+    c.ocultar_pregunta(&d, &p, &false);
+    let otra = c.hacer_pregunta(&beto, &g, &s(&env, "¿Y los eventos?"));
+    assert_eq!(c.try_aceptar_respuesta(&beto, &otra, &r), Err(Ok(Error::RespuestaAjena)));
+}
+
+#[test]
+#[should_panic]
+fn sin_firma_no_crea_grupo() {
+    let (env, c) = setup();
+    let d = Address::generate(&env);
+    c.crear_grupo_estudio(&d, &s(&env, "Sin firma"), &false);
+}
+
+#[test]
+#[should_panic]
+fn sin_firma_no_pregunta() {
+    let (env, c) = setup();
+    let d = Address::generate(&env);
+    env.mock_all_auths();
+    let g = c.crear_grupo_estudio(&d, &s(&env, "G"), &false);
+    env.set_auths(&[]);
+    c.hacer_pregunta(&d, &g, &s(&env, "Sin firma"));
+}
