@@ -65,6 +65,9 @@ pub enum Error {
     NoPostulado = 5,
     UriVacia = 6,
     EsDelCreador = 7,
+    TienePostulantes = 8,
+    NoEstaCancelado = 9,
+    MismoCreador = 10,
 }
 
 #[contractevent]
@@ -127,6 +130,31 @@ pub struct PremioDividido {
     pub reto: u32,
     pub agentes: Vec<u32>,
     pub cada_uno: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RetoEditado {
+    #[topic]
+    pub reto: u32,
+    pub uri: String,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RetoReabierto {
+    #[topic]
+    pub reto: u32,
+    pub premio: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RetoTraspasado {
+    #[topic]
+    pub reto: u32,
+    pub de: Address,
+    pub a: Address,
 }
 
 #[contract]
@@ -290,6 +318,65 @@ impl Retos {
         }
         PremioDividido { reto, agentes: ganadores, cada_uno }.publish(&env);
         Ok(cada_uno)
+    }
+
+    /// El creador corrige la descripción (uri) de un reto abierto mientras nadie se ha postulado,
+    /// para no cambiarle las reglas a quien ya trabaja en él.
+    pub fn editar_reto(env: Env, reto: u32, uri: String) -> Result<(), Error> {
+        let mut r = Self::reto(env.clone(), reto)?;
+        r.creador.require_auth();
+        if r.estado != EstadoReto::Abierto {
+            return Err(Error::RetoCerrado);
+        }
+        if !r.postulantes.is_empty() {
+            return Err(Error::TienePostulantes);
+        }
+        if uri.is_empty() {
+            return Err(Error::UriVacia);
+        }
+        r.uri = uri.clone();
+        poner(&env, reto, &r);
+        RetoEditado { reto, uri }.publish(&env);
+        Ok(())
+    }
+
+    /// El creador reabre un reto cancelado depositando de nuevo un premio. Las postulaciones
+    /// anteriores se borran: cada agente vuelve a postularse.
+    pub fn reabrir_reto(env: Env, reto: u32, premio: i128) -> Result<(), Error> {
+        let mut r = Self::reto(env.clone(), reto)?;
+        r.creador.require_auth();
+        if r.estado != EstadoReto::Cancelado {
+            return Err(Error::NoEstaCancelado);
+        }
+        if premio <= 0 {
+            return Err(Error::MontoInvalido);
+        }
+        token::Client::new(&env, &r.token).transfer(&r.creador, env.current_contract_address(), &premio);
+        r.premio = premio;
+        r.estado = EstadoReto::Abierto;
+        r.postulantes = Vec::new(&env);
+        poner(&env, reto, &r);
+        RetoReabierto { reto, premio }.publish(&env);
+        Ok(())
+    }
+
+    /// El creador cede un reto abierto a otra persona (por ejemplo, a la empresa que lo patrocina):
+    /// firman los dos, y desde ahí el nuevo creador elige ganador o cancela y recupera el premio.
+    pub fn traspasar_reto(env: Env, reto: u32, nuevo: Address) -> Result<(), Error> {
+        let mut r = Self::reto(env.clone(), reto)?;
+        r.creador.require_auth();
+        nuevo.require_auth();
+        if r.estado != EstadoReto::Abierto {
+            return Err(Error::RetoCerrado);
+        }
+        if nuevo == r.creador {
+            return Err(Error::MismoCreador);
+        }
+        let de = r.creador.clone();
+        r.creador = nuevo.clone();
+        poner(&env, reto, &r);
+        RetoTraspasado { reto, de, a: nuevo }.publish(&env);
+        Ok(())
     }
 
     pub fn reto(env: Env, id: u32) -> Result<Reto, Error> {

@@ -132,6 +132,7 @@ enum Clave {
     Agente(Address),
     Trabajo(u32),
     Registros(u32, Symbol),
+    Pausado(u32),
 }
 
 /// Lo único que Reputación le pregunta a Insignias.
@@ -159,6 +160,22 @@ pub enum Error {
     MismaCuenta = 13,
     PruebaVacia = 14,
     MotivoVacio = 15,
+    EquipoPausado = 16,
+    EquipoNoPausado = 17,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EquipoPausadoEv {
+    #[topic]
+    pub equipo: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EquipoReanudado {
+    #[topic]
+    pub equipo: u32,
 }
 
 #[contractevent]
@@ -389,6 +406,43 @@ impl Reputacion {
         Ok(())
     }
 
+    /// El humano pausa a su equipo (vacaciones, carga de trabajo): no toma trabajos nuevos,
+    /// pero termina los que tiene en curso y conserva sus puntos. A diferencia de `retirar`,
+    /// se puede deshacer con `reanudar_equipo`.
+    pub fn pausar_equipo(env: Env, equipo: u32) -> Result<(), Error> {
+        let e = Self::equipo(env.clone(), equipo)?;
+        e.humano.require_auth();
+        if !e.activo {
+            return Err(Error::EquipoRetirado);
+        }
+        if Self::equipo_pausado(env.clone(), equipo) {
+            return Err(Error::EquipoPausado);
+        }
+        Self::poner(&env, &Clave::Pausado(equipo), &true);
+        EquipoPausadoEv { equipo }.publish(&env);
+        Ok(())
+    }
+
+    /// El humano vuelve a abrir su equipo pausado a trabajos nuevos.
+    pub fn reanudar_equipo(env: Env, equipo: u32) -> Result<(), Error> {
+        let e = Self::equipo(env.clone(), equipo)?;
+        e.humano.require_auth();
+        if !e.activo {
+            return Err(Error::EquipoRetirado);
+        }
+        if !Self::equipo_pausado(env.clone(), equipo) {
+            return Err(Error::EquipoNoPausado);
+        }
+        env.storage().persistent().remove(&Clave::Pausado(equipo));
+        EquipoReanudado { equipo }.publish(&env);
+        Ok(())
+    }
+
+    /// ¿El equipo está pausado?
+    pub fn equipo_pausado(env: Env, equipo: u32) -> bool {
+        env.storage().persistent().get(&Clave::Pausado(equipo)).unwrap_or(false)
+    }
+
     /// Un cliente contrata a un equipo para un trabajo en una habilidad. Su pago queda
     /// en custodia en este contrato. El humano del equipo necesita la insignia de la
     /// habilidad. Regresa el número de trabajo.
@@ -408,6 +462,9 @@ impl Reputacion {
         let e = Self::equipo(env.clone(), equipo)?;
         if !e.activo {
             return Err(Error::EquipoRetirado);
+        }
+        if Self::equipo_pausado(env.clone(), equipo) {
+            return Err(Error::EquipoPausado);
         }
         if cliente == e.humano || cliente == e.agente {
             return Err(Error::MismaCuenta);

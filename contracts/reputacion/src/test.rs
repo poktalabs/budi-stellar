@@ -527,3 +527,19 @@ fn cancelar_de_comun_acuerdo_regresa_todo_y_pide_las_dos_firmas() {
     assert_eq!(c.token.balance(&c.cliente), antes);
     assert_eq!(c.r.try_cancelar_de_comun_acuerdo(&t), Err(Ok(Error::EstadoInvalido)));
 }
+
+#[test]
+fn equipo_pausado_no_toma_trabajos_y_al_reanudar_si() {
+    let (c, equipo) = con_equipo();
+    assert_eq!(c.r.try_reanudar_equipo(&equipo), Err(Ok(Error::EquipoNoPausado)));
+    c.r.pausar_equipo(&equipo);
+    assert!(c.r.equipo_pausado(&equipo));
+    assert_eq!(c.r.try_pausar_equipo(&equipo), Err(Ok(Error::EquipoPausado)));
+    assert_eq!(
+        c.r.try_contratar(&c.cliente, &equipo, &soroban(), &(30 * XLM), &DIA),
+        Err(Ok(Error::EquipoPausado))
+    );
+    c.r.reanudar_equipo(&equipo);
+    assert!(!c.r.equipo_pausado(&equipo));
+    c.r.contratar(&c.cliente, &equipo, &soroban(), &(30 * XLM), &DIA);
+}

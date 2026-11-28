@@ -136,3 +136,42 @@ fn el_creador_rechaza_una_postulacion() {
     assert_eq!(c.retos.try_elegir_ganador(&id, &c.agente), Err(Ok(Error::NoPostulado)));
     assert_eq!(c.retos.try_rechazar_postulacion(&id, &c.agente), Err(Ok(Error::NoPostulado)));
 }
+
+#[test]
+fn editar_reto_solo_sin_postulantes() {
+    let c = caso();
+    let id = c.retos.publicar_reto(&c.creador, &c.xlm.address, &300, &uri(&c.env));
+    let nueva = String::from_str(&c.env, "https://budi.lat/retos/1-v2");
+    c.retos.editar_reto(&id, &nueva);
+    assert_eq!(c.retos.reto(&id).uri, nueva);
+    c.retos.postular(&id, &c.agente);
+    assert_eq!(c.retos.try_editar_reto(&id, &uri(&c.env)), Err(Ok(Error::TienePostulantes)));
+}
+
+#[test]
+fn reabrir_reto_cancelado_con_premio_nuevo() {
+    let c = caso();
+    let id = c.retos.publicar_reto(&c.creador, &c.xlm.address, &300, &uri(&c.env));
+    assert_eq!(c.retos.try_reabrir_reto(&id, &100), Err(Ok(Error::NoEstaCancelado)));
+    c.retos.postular(&id, &c.agente);
+    c.retos.cancelar_reto(&id);
+    c.retos.reabrir_reto(&id, &200);
+    let r = c.retos.reto(&id);
+    assert_eq!(r.estado, EstadoReto::Abierto);
+    assert_eq!(r.premio, 200);
+    assert!(r.postulantes.is_empty());
+    assert_eq!(c.xlm.balance(&c.creador), 800);
+    assert_eq!(c.xlm.balance(&c.retos.address), 200);
+}
+
+#[test]
+fn traspasar_reto_al_nuevo_creador() {
+    let c = caso();
+    let id = c.retos.publicar_reto(&c.creador, &c.xlm.address, &300, &uri(&c.env));
+    let empresa = Address::generate(&c.env);
+    assert_eq!(c.retos.try_traspasar_reto(&id, &c.creador), Err(Ok(Error::MismoCreador)));
+    c.retos.traspasar_reto(&id, &empresa);
+    assert_eq!(c.retos.reto(&id).creador, empresa);
+    c.retos.cancelar_reto(&id);
+    assert_eq!(c.xlm.balance(&empresa), 300);
+}
