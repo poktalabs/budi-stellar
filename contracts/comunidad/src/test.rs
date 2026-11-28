@@ -171,3 +171,22 @@ fn describir_privacidad_invitaciones_desaceptar_reportes_y_borrar_pregunta() {
     c.borrar_pregunta_foro(&d, &p2);
     assert_eq!(c.pregunta(&p2), None);
 }
+
+#[test]
+fn quitar_descripcion_mostrar_y_desfijar() {
+    let (env, c) = setup();
+    env.mock_all_auths();
+    let (d, ana) = (Address::generate(&env), Address::generate(&env));
+    let g = c.crear_grupo_estudio(&d, &s(&env, "G"), &false);
+    c.describir_grupo_estudio(&d, &g, &s(&env, "Martes"));
+    c.quitar_descripcion_grupo(&d, &g);
+    assert_eq!(c.descripcion_grupo(&g), None);
+    c.unirse_grupo_estudio(&ana, &g);
+    let p = c.hacer_pregunta(&ana, &g, &s(&env, "Hola"));
+    assert_eq!(c.try_mostrar_pregunta(&ana, &p), Err(Ok(Error::NoEsModerador)));
+    assert_eq!(c.try_desfijar_pregunta(&ana, &p), Err(Ok(Error::NoEsModerador)));
+    c.mostrar_pregunta(&d, &p);
+    c.desfijar_pregunta(&d, &p);
+    let q = c.pregunta(&p).unwrap();
+    assert!(!q.oculta && !q.fijada);
+}

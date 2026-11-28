@@ -593,6 +593,34 @@ impl Comunidad {
         Ok(())
     }
 
+    /// El dueño borra la descripción del grupo.
+    pub fn quitar_descripcion_grupo(env: Env, dueno: Address, grupo: u32) -> Result<(), Error> {
+        Self::grupo_del_dueno(&env, &dueno, grupo)?;
+        env.storage().persistent().remove(&Clave::Descripcion(grupo));
+        GrupoCambio { grupo, quien: dueno, accion: symbol_short!("sindesc") }.publish(&env);
+        Ok(())
+    }
+
+    /// Un moderador vuelve a mostrar una pregunta oculta.
+    pub fn mostrar_pregunta(env: Env, quien: Address, pregunta: u32) -> Result<(), Error> {
+        let mut p = Self::cargar_pregunta(&env, pregunta)?;
+        Self::puede_moderar(&env, &quien, p.grupo)?;
+        p.oculta = false;
+        guardar(&env, &Clave::Pregunta(pregunta), &p);
+        ForoCambio { numero: pregunta, quien, accion: symbol_short!("mostrar") }.publish(&env);
+        Ok(())
+    }
+
+    /// Un moderador quita una pregunta de lo fijado.
+    pub fn desfijar_pregunta(env: Env, quien: Address, pregunta: u32) -> Result<(), Error> {
+        let mut p = Self::cargar_pregunta(&env, pregunta)?;
+        Self::puede_moderar(&env, &quien, p.grupo)?;
+        p.fijada = false;
+        guardar(&env, &Clave::Pregunta(pregunta), &p);
+        ForoCambio { numero: pregunta, quien, accion: symbol_short!("desfijar") }.publish(&env);
+        Ok(())
+    }
+
     pub fn descripcion_grupo(env: Env, grupo: u32) -> Option<String> {
         env.storage().persistent().get(&Clave::Descripcion(grupo))
     }
