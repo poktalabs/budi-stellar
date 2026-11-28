@@ -2,7 +2,7 @@
 extern crate std;
 
 use super::*;
-use soroban_sdk::{testutils::Address as _, Env, String};
+use soroban_sdk::{testutils::Address as _, vec, Env, String};
 
 fn preparar() -> (Env, CohortesClient<'static>, Address, Address, u32) {
     let env = Env::default();
@@ -160,4 +160,42 @@ fn solo_el_mentor_cierra() {
     let id = c.abrir_cohorte(&m, &String::from_str(&env, "x"), &2, &1, &0);
     env.set_auths(&[]);
     c.cerrar_cohorte(&id);
+}
+
+#[test]
+fn comentor_pasa_lista_y_se_le_quita() {
+    let (env, c, _m, alumno, id) = preparar();
+    let co = Address::generate(&env);
+    assert_eq!(c.try_marcar_asistencia_comentor(&id, &co, &alumno, &1), Err(Ok(soroban_sdk::Error::from_contract_error(Error::NoComentor as u32))));
+    c.agregar_comentor(&id, &co);
+    assert!(c.es_comentor(&id, &co));
+    c.marcar_asistencia_comentor(&id, &co, &alumno, &1);
+    assert_eq!(c.progreso(&id, &alumno).asistencias, 1);
+    c.quitar_comentor(&id, &co);
+    assert!(!c.es_comentor(&id, &co));
+}
+
+#[test]
+fn lista_en_lote() {
+    let (env, c, _m, alumno, id) = preparar();
+    let otro = Address::generate(&env);
+    c.unirse_a_cohorte(&id, &otro);
+    assert_eq!(c.marcar_asistencia_lote(&id, &vec![&env, alumno.clone(), otro.clone()], &2), 2);
+    assert_eq!(c.progreso(&id, &otro).asistencias, 1);
+}
+
+#[test]
+fn pausa_bloquea_unirse_y_entregar() {
+    let (env, c, _m, alumno, id) = preparar();
+    c.fijar_fecha_inicio(&id, &1_796_000_000);
+    assert_eq!(c.fecha_inicio(&id), 1_796_000_000);
+    c.anunciar_cohorte(&id, &String::from_str(&env, "Sesion 1 el lunes"));
+    assert!(c.anuncio(&id).is_some());
+    c.pausar_cohorte(&id);
+    let nuevo = Address::generate(&env);
+    assert_eq!(c.try_unirse_a_cohorte(&id, &nuevo), Err(Ok(soroban_sdk::Error::from_contract_error(Error::Pausada as u32))));
+    assert_eq!(c.try_entregar_tarea(&id, &alumno, &1, &String::from_str(&env, "x")), Err(Ok(soroban_sdk::Error::from_contract_error(Error::Pausada as u32))));
+    c.reanudar_cohorte(&id);
+    c.unirse_a_cohorte(&id, &nuevo);
+    assert_eq!(c.try_reanudar_cohorte(&id), Err(Ok(soroban_sdk::Error::from_contract_error(Error::NoPausada as u32))));
 }

@@ -7,7 +7,7 @@
 
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype, panic_with_error, Address,
-    Env, String,
+    Env, String, Vec,
 };
 
 const TTL_UMBRAL: u32 = 17_280; // ~1 día en ledgers de 5 s
@@ -21,6 +21,10 @@ enum Clave {
     Asistio(u32, Address, u32),
     Tarea(u32, Address, u32),
     Cerrada(u32),
+    Comentor(u32, Address),
+    Inicio(u32),
+    Pausada(u32),
+    Anuncio(u32),
 }
 
 #[contracttype]
@@ -66,6 +70,10 @@ pub enum Error {
     YaAprobada = 10,
     Cerrada = 11,
     NoAprobada = 12,
+    NoComentor = 13,
+    YaComentor = 14,
+    Pausada = 15,
+    NoPausada = 16,
 }
 
 #[contractevent]
@@ -206,6 +214,63 @@ pub struct RequisitosCambiados {
     pub tareas_minimas: u32,
 }
 
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ComentorAgregado {
+    #[topic]
+    pub id: u32,
+    #[topic]
+    pub comentor: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ComentorQuitado {
+    #[topic]
+    pub id: u32,
+    #[topic]
+    pub comentor: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AsistenciaLote {
+    #[topic]
+    pub id: u32,
+    pub sesion: u32,
+    pub marcados: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FechaInicioFijada {
+    #[topic]
+    pub id: u32,
+    pub inicio: u64,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CohortePausada {
+    #[topic]
+    pub id: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CohorteReanudada {
+    #[topic]
+    pub id: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CohorteAnunciada {
+    #[topic]
+    pub id: u32,
+    pub mensaje: String,
+}
+
 #[contract]
 pub struct Cohortes;
 
@@ -241,6 +306,32 @@ fn guardar_progreso(env: &Env, id: u32, alumno: &Address, p: &Progreso) {
     let k = Clave::Alumno(id, alumno.clone());
     env.storage().persistent().set(&k, p);
     env.storage().persistent().extend_ttl(&k, TTL_UMBRAL, TTL_EXTENDER);
+}
+
+fn poner(env: &Env, k: &Clave) {
+    env.storage().persistent().set(k, &true);
+    env.storage().persistent().extend_ttl(k, TTL_UMBRAL, TTL_EXTENDER);
+}
+
+fn no_pausada(env: &Env, id: u32) {
+    if env.storage().persistent().has(&Clave::Pausada(id)) {
+        panic_with_error!(env, Error::Pausada);
+    }
+}
+
+/// Marca una asistencia sin revisar firmas (quien llama ya las revisó).
+fn asistir(env: &Env, c: &Cohorte, id: u32, alumno: &Address, sesion: u32) {
+    if sesion == 0 || sesion > c.sesiones {
+        panic_with_error!(env, Error::SesionInvalida);
+    }
+    let mut p = progreso_de(env, id, alumno);
+    let k = Clave::Asistio(id, alumno.clone(), sesion);
+    if env.storage().persistent().has(&k) {
+        panic_with_error!(env, Error::YaAsistio);
+    }
+    poner(env, &k);
+    p.asistencias += 1;
+    guardar_progreso(env, id, alumno, &p);
 }
 
 #[contractimpl]
@@ -288,6 +379,7 @@ impl Cohortes {
     pub fn unirse_a_cohorte(env: Env, id: u32, alumno: Address) {
         alumno.require_auth();
         let mut c = leer(&env, id);
+        no_pausada(&env, id);
         if env.storage().persistent().has(&Clave::Cerrada(id)) {
             panic_with_error!(&env, Error::Cerrada);
         }
@@ -342,6 +434,7 @@ impl Cohortes {
     pub fn entregar_tarea(env: Env, id: u32, alumno: Address, tarea: u32, enlace: String) {
         alumno.require_auth();
         leer(&env, id);
+        no_pausada(&env, id);
         progreso_de(&env, id, &alumno);
         let k = Clave::Tarea(id, alumno.clone(), tarea);
         if let Some(t) = env.storage().persistent().get::<_, Tarea>(&k) {
@@ -495,6 +588,106 @@ impl Cohortes {
         c.tareas_minimas = tareas_minimas;
         guardar(&env, id, &c);
         RequisitosCambiados { id, asistencia_minima, tareas_minimas }.publish(&env);
+    }
+
+    /// El mentor suma un co-mentor que también puede pasar lista.
+    pub fn agregar_comentor(env: Env, id: u32, comentor: Address) {
+        let c = leer(&env, id);
+        c.mentor.require_auth();
+        let k = Clave::Comentor(id, comentor.clone());
+        if env.storage().persistent().has(&k) {
+            panic_with_error!(&env, Error::YaComentor);
+        }
+        poner(&env, &k);
+        ComentorAgregado { id, comentor }.publish(&env);
+    }
+
+    /// El mentor quita a un co-mentor.
+    pub fn quitar_comentor(env: Env, id: u32, comentor: Address) {
+        let c = leer(&env, id);
+        c.mentor.require_auth();
+        let k = Clave::Comentor(id, comentor.clone());
+        if !env.storage().persistent().has(&k) {
+            panic_with_error!(&env, Error::NoComentor);
+        }
+        env.storage().persistent().remove(&k);
+        ComentorQuitado { id, comentor }.publish(&env);
+    }
+
+    /// Un co-mentor pasa lista de un alumno en una sesión.
+    pub fn marcar_asistencia_comentor(env: Env, id: u32, comentor: Address, alumno: Address, sesion: u32) {
+        comentor.require_auth();
+        let c = leer(&env, id);
+        if !env.storage().persistent().has(&Clave::Comentor(id, comentor.clone())) {
+            panic_with_error!(&env, Error::NoComentor);
+        }
+        asistir(&env, &c, id, &alumno, sesion);
+        AsistenciaMarcada { id, alumno, sesion }.publish(&env);
+    }
+
+    /// El mentor pasa lista de varios alumnos en una sola transacción.
+    pub fn marcar_asistencia_lote(env: Env, id: u32, alumnos: Vec<Address>, sesion: u32) -> u32 {
+        let c = leer(&env, id);
+        c.mentor.require_auth();
+        for a in alumnos.iter() {
+            asistir(&env, &c, id, &a, sesion);
+        }
+        let marcados = alumnos.len();
+        AsistenciaLote { id, sesion, marcados }.publish(&env);
+        marcados
+    }
+
+    /// El mentor fija la fecha de inicio (marca de tiempo Unix en segundos).
+    pub fn fijar_fecha_inicio(env: Env, id: u32, inicio: u64) {
+        let c = leer(&env, id);
+        c.mentor.require_auth();
+        let k = Clave::Inicio(id);
+        env.storage().persistent().set(&k, &inicio);
+        env.storage().persistent().extend_ttl(&k, TTL_UMBRAL, TTL_EXTENDER);
+        FechaInicioFijada { id, inicio }.publish(&env);
+    }
+
+    /// El mentor pausa la cohorte: nadie se une ni entrega tareas hasta reanudar.
+    pub fn pausar_cohorte(env: Env, id: u32) {
+        let c = leer(&env, id);
+        c.mentor.require_auth();
+        no_pausada(&env, id);
+        poner(&env, &Clave::Pausada(id));
+        CohortePausada { id }.publish(&env);
+    }
+
+    /// El mentor reanuda una cohorte pausada.
+    pub fn reanudar_cohorte(env: Env, id: u32) {
+        let c = leer(&env, id);
+        c.mentor.require_auth();
+        let k = Clave::Pausada(id);
+        if !env.storage().persistent().has(&k) {
+            panic_with_error!(&env, Error::NoPausada);
+        }
+        env.storage().persistent().remove(&k);
+        CohorteReanudada { id }.publish(&env);
+    }
+
+    /// El mentor publica un aviso para la cohorte (queda el último).
+    pub fn anunciar_cohorte(env: Env, id: u32, mensaje: String) {
+        let c = leer(&env, id);
+        c.mentor.require_auth();
+        let k = Clave::Anuncio(id);
+        env.storage().persistent().set(&k, &mensaje);
+        env.storage().persistent().extend_ttl(&k, TTL_UMBRAL, TTL_EXTENDER);
+        CohorteAnunciada { id, mensaje }.publish(&env);
+    }
+
+    pub fn es_comentor(env: Env, id: u32, comentor: Address) -> bool {
+        env.storage().persistent().has(&Clave::Comentor(id, comentor))
+    }
+
+    pub fn fecha_inicio(env: Env, id: u32) -> u64 {
+        env.storage().persistent().get(&Clave::Inicio(id)).unwrap_or(0)
+    }
+
+    pub fn anuncio(env: Env, id: u32) -> Option<String> {
+        env.storage().persistent().get(&Clave::Anuncio(id))
     }
 
     pub fn cohorte(env: Env, id: u32) -> Cohorte {
