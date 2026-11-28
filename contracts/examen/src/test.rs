@@ -15,7 +15,8 @@ fn caso() -> (Env, ExamenClient<'static>, insignias::Client<'static>) {
     let env = Env::default();
     let insignias_id = Address::generate(&env);
     let huella: BytesN<32> = env.crypto().sha256(&Bytes::from_slice(&env, CORRECTAS.as_bytes())).into();
-    let examen_id = env.register(Examen, (insignias_id.clone(), symbol_short!("soroban1"), huella));
+    let admin = Address::generate(&env);
+    let examen_id = env.register(Examen, (admin, insignias_id.clone(), symbol_short!("soroban1"), huella));
     env.register_at(&insignias_id, insignias::WASM, (examen_id.clone(),));
     let examen = ExamenClient::new(&env, &examen_id);
     let insignias = insignias::Client::new(&env, &insignias_id);
@@ -89,4 +90,33 @@ fn publica_el_examen_aprobado() {
         env.events().all().filter_by_contract(&examen.address),
         std::vec![esperado.to_xdr(&env, &examen.address)]
     );
+}
+
+#[test]
+fn el_admin_pausa_reanuda_y_publica_una_nueva_edicion() {
+    let (env, examen, insignias) = caso();
+    env.mock_all_auths();
+    let ana = Address::generate(&env);
+    let beto = Address::generate(&env);
+
+    examen.pausar_examen();
+    assert!(examen.pausado());
+    assert_eq!(examen.try_presentar(&ana, &resp(&env, CORRECTAS)), Err(Ok(Error::Pausado)));
+
+    examen.reanudar_examen();
+    assert!(!examen.pausado());
+    assert_eq!(examen.presentar(&ana, &resp(&env, CORRECTAS)), 1);
+
+    let nueva: BytesN<32> = env.crypto().sha256(&resp(&env, "aab")).into();
+    examen.actualizar_examen(&nueva);
+    assert_eq!(examen.try_presentar(&beto, &resp(&env, CORRECTAS)), Err(Ok(Error::Incorrecto)));
+    assert_eq!(examen.presentar(&beto, &resp(&env, "aab")), 2);
+    assert!(insignias.tiene(&ana, &symbol_short!("soroban1")));
+}
+
+#[test]
+#[should_panic]
+fn sin_la_firma_del_admin_no_se_pausa() {
+    let (_env, examen, _) = caso();
+    examen.pausar_examen();
 }

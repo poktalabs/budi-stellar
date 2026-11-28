@@ -23,6 +23,8 @@ enum Clave {
     Ruta,
     Huella,
     Aprobado(Address),
+    Admin,
+    Pausado,
 }
 
 /// Lo único que Examen le pide a Insignias.
@@ -37,6 +39,7 @@ pub trait InsigniasApi {
 pub enum Error {
     Incorrecto = 1,
     YaAprobo = 2,
+    Pausado = 3,
 }
 
 #[contractevent]
@@ -49,14 +52,38 @@ pub struct ExamenAprobado {
     pub insignia: u32,
 }
 
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExamenPausado {
+    #[topic]
+    pub ruta: Symbol,
+    pub pausado: bool,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExamenActualizado {
+    #[topic]
+    pub ruta: Symbol,
+    pub huella: BytesN<32>,
+}
+
 #[contract]
 pub struct Examen;
 
 #[contractimpl]
 impl Examen {
     /// `huella` es el sha256 de las respuestas correctas unidas (por ejemplo "bca").
-    pub fn __constructor(env: Env, insignias: Address, ruta: Symbol, huella: BytesN<32>) {
+    /// `admin` puede pausar el examen y publicar una nueva edición.
+    pub fn __constructor(
+        env: Env,
+        admin: Address,
+        insignias: Address,
+        ruta: Symbol,
+        huella: BytesN<32>,
+    ) {
         let s = env.storage().instance();
+        s.set(&Clave::Admin, &admin);
         s.set(&Clave::Insignias, &insignias);
         s.set(&Clave::Ruta, &ruta);
         s.set(&Clave::Huella, &huella);
@@ -69,6 +96,9 @@ impl Examen {
         alumno.require_auth();
         let s = env.storage().instance();
         s.extend_ttl(TTL_UMBRAL, TTL_EXTENDER);
+        if s.get(&Clave::Pausado).unwrap_or(false) {
+            return Err(Error::Pausado);
+        }
         if env.storage().persistent().has(&Clave::Aprobado(alumno.clone())) {
             return Err(Error::YaAprobo);
         }
@@ -87,6 +117,34 @@ impl Examen {
         Ok(id)
     }
 
+    /// El admin pausa el examen (por ejemplo, mientras corrige una pregunta):
+    /// nadie puede presentar hasta que lo reanude.
+    pub fn pausar_examen(env: Env) {
+        poner_pausa(&env, true);
+    }
+
+    /// El admin reanuda un examen pausado.
+    pub fn reanudar_examen(env: Env) {
+        poner_pausa(&env, false);
+    }
+
+    /// El admin publica una nueva edición del examen: reemplaza la huella de las
+    /// respuestas correctas. Quien ya aprobó conserva su insignia.
+    pub fn actualizar_examen(env: Env, huella: BytesN<32>) {
+        let s = env.storage().instance();
+        let admin: Address = s.get(&Clave::Admin).unwrap();
+        admin.require_auth();
+        s.set(&Clave::Huella, &huella);
+        s.extend_ttl(TTL_UMBRAL, TTL_EXTENDER);
+        let ruta: Symbol = s.get(&Clave::Ruta).unwrap();
+        ExamenActualizado { ruta, huella }.publish(&env);
+    }
+
+    /// Si el examen está pausado.
+    pub fn pausado(env: Env) -> bool {
+        env.storage().instance().get(&Clave::Pausado).unwrap_or(false)
+    }
+
     /// El id de la insignia que ganó `alumno` con este examen, si ya aprobó.
     pub fn aprobado(env: Env, alumno: Address) -> Option<u32> {
         env.storage().persistent().get(&Clave::Aprobado(alumno))
@@ -96,6 +154,16 @@ impl Examen {
     pub fn ruta(env: Env) -> Symbol {
         env.storage().instance().get(&Clave::Ruta).unwrap()
     }
+}
+
+fn poner_pausa(env: &Env, pausado: bool) {
+    let s = env.storage().instance();
+    let admin: Address = s.get(&Clave::Admin).unwrap();
+    admin.require_auth();
+    s.set(&Clave::Pausado, &pausado);
+    s.extend_ttl(TTL_UMBRAL, TTL_EXTENDER);
+    let ruta: Symbol = s.get(&Clave::Ruta).unwrap();
+    ExamenPausado { ruta, pausado }.publish(env);
 }
 
 #[cfg(test)]

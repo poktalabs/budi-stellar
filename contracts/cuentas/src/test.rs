@@ -131,3 +131,31 @@ fn la_cuenta_hace_varias_llamadas_en_una_transaccion() {
     assert_eq!(c.agentes.feedback(&a2, &0).puntaje, 70);
     assert_eq!(c.agentes.feedback(&a3, &0).puntaje, 95);
 }
+
+#[test]
+fn el_dueno_nombra_y_quita_heredero_y_cierra_la_cuenta() {
+    let c = caso();
+    assert_eq!(
+        c.registro.try_heredar_cuenta(&c.agentes.address, &c.id, &Address::generate(&c.env)),
+        Err(Ok(Error::NoExiste))
+    );
+    c.registro.crear_cuenta(&c.agentes.address, &c.id);
+    let heredero = Address::generate(&c.env);
+
+    c.registro.heredar_cuenta(&c.agentes.address, &c.id, &heredero);
+    assert_eq!(c.env.auths()[0].0, c.dueno);
+    assert_eq!(c.registro.heredero(&c.agentes.address, &c.id), Some(heredero.clone()));
+
+    c.registro.quitar_heredero(&c.agentes.address, &c.id);
+    assert_eq!(c.registro.heredero(&c.agentes.address, &c.id), None);
+
+    c.registro.heredar_cuenta(&c.agentes.address, &c.id, &heredero);
+    c.registro.cerrar_cuenta(&c.agentes.address, &c.id);
+    assert!(c.registro.cerrada(&c.agentes.address, &c.id));
+    assert_eq!(c.registro.heredero(&c.agentes.address, &c.id), None);
+    assert_eq!(
+        c.registro.try_heredar_cuenta(&c.agentes.address, &c.id, &heredero),
+        Err(Ok(Error::Cerrada))
+    );
+    assert_eq!(c.registro.try_crear_cuenta(&c.agentes.address, &c.id), Err(Ok(Error::YaExiste)));
+}
