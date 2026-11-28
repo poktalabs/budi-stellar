@@ -281,6 +281,24 @@ pub struct Propina {
     pub monto: i128,
 }
 
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Traspasado {
+    #[topic]
+    pub id: u32,
+    pub de: u32,
+    pub a: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Adelantado {
+    #[topic]
+    pub id: u32,
+    pub adelanto: i128,
+    pub queda: i128,
+}
+
 #[contract]
 pub struct Reputacion;
 
@@ -624,6 +642,63 @@ impl Reputacion {
         Self::token(&env).transfer(&t.cliente, &humano, &monto);
         Propina { id: trabajo, monto }.publish(&env);
         Ok(())
+    }
+
+    /// El equipo le pasa un trabajo que no ha entregado a otro equipo. Firman los dos
+    /// humanos: el que lo suelta y el que lo toma. El equipo nuevo debe estar activo,
+    /// tener la insignia de la habilidad y no ser el cliente. La custodia y el plazo
+    /// siguen iguales; los puntos serán del equipo que entregue.
+    pub fn traspasar(env: Env, trabajo: u32, a_equipo: u32) -> Result<(), Error> {
+        let mut t = Self::trabajo(env.clone(), trabajo)?;
+        let actual = Self::equipo(env.clone(), t.equipo)?;
+        let nuevo = Self::equipo(env.clone(), a_equipo)?;
+        actual.humano.require_auth();
+        nuevo.humano.require_auth();
+        if t.estado != Estado::EnCustodia || a_equipo == t.equipo {
+            return Err(Error::EstadoInvalido);
+        }
+        if env.ledger().timestamp() >= t.limite {
+            return Err(Error::PlazoVencido);
+        }
+        if !nuevo.activo {
+            return Err(Error::EquipoRetirado);
+        }
+        if t.cliente == nuevo.humano || t.cliente == nuevo.agente {
+            return Err(Error::MismaCuenta);
+        }
+        let reglas = Self::habilidad(env.clone(), t.habilidad.clone())?;
+        Self::con_insignia(&env, &nuevo.humano, &reglas)?;
+        let de = t.equipo;
+        t.equipo = a_equipo;
+        Self::poner(&env, &Clave::Trabajo(trabajo), &t);
+        Traspasado { id: trabajo, de, a: a_equipo }.publish(&env);
+        Ok(())
+    }
+
+    /// El cliente libera por adelantado parte del pago en custodia (un avance o hito
+    /// del trabajo): va directo al humano y lo demás sigue en custodia. El adelanto no
+    /// suma puntos; al final el equipo suma por lo que quede. Firma el cliente.
+    /// Regresa lo que queda en custodia.
+    pub fn adelantar(env: Env, trabajo: u32, monto: i128) -> Result<i128, Error> {
+        let mut t = Self::trabajo(env.clone(), trabajo)?;
+        t.cliente.require_auth();
+        if t.estado != Estado::EnCustodia && t.estado != Estado::Entregado {
+            return Err(Error::EstadoInvalido);
+        }
+        if monto <= 0 || monto >= t.monto {
+            return Err(Error::MontoInvalido);
+        }
+        let humano = Self::equipo(env.clone(), t.equipo)?.humano;
+        t.monto -= monto;
+        Self::poner(&env, &Clave::Trabajo(trabajo), &t);
+        Self::token(&env).transfer(&env.current_contract_address(), &humano, &monto);
+        Adelantado {
+            id: trabajo,
+            adelanto: monto,
+            queda: t.monto,
+        }
+        .publish(&env);
+        Ok(t.monto)
     }
 
     /// Budi suma puntos por una evaluación calificada (la otra forma de renovar).

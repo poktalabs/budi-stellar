@@ -435,3 +435,68 @@ fn la_propina_va_al_humano_y_no_suma_puntos() {
     assert_eq!(c.r.puntaje(&equipo, &soroban()).puntos, puntos);
     assert_eq!(c.r.try_propina(&t, &0), Err(Ok(Error::MontoInvalido)));
 }
+
+/// Un segundo equipo con insignia, para traspasos.
+fn otro_equipo(c: &Caso) -> (Address, u32) {
+    let humano = Address::generate(&c.env);
+    c.insignias.otorgar(&humano, &symbol_short!("sorob_101"));
+    let equipo = c.r.formar_equipo(&humano, &Address::generate(&c.env));
+    (humano, equipo)
+}
+
+#[test]
+fn un_trabajo_se_traspasa_a_otro_equipo_y_ese_cobra_y_suma() {
+    let (c, equipo) = con_equipo();
+    let (beto, otro) = otro_equipo(&c);
+    let t = c.r.contratar(&c.cliente, &equipo, &soroban(), &(20 * XLM), &DIA);
+    c.r.traspasar(&t, &otro);
+    assert_eq!(c.r.trabajo(&t).equipo, otro);
+    c.r.entregar(&t, &prueba(&c));
+    assert_eq!(c.r.aceptar(&t), 2);
+    assert_eq!(c.token.balance(&beto), 20 * XLM);
+    assert_eq!(c.r.puntaje(&otro, &soroban()).puntos, 2);
+    assert_eq!(c.r.puntaje(&equipo, &soroban()).puntos, 0);
+}
+
+#[test]
+fn no_se_traspasa_a_un_equipo_sin_insignia_ni_lo_ya_entregado() {
+    let (c, equipo) = con_equipo();
+    let sin = c.r.formar_equipo(&Address::generate(&c.env), &Address::generate(&c.env));
+    let t = c.r.contratar(&c.cliente, &equipo, &soroban(), &(20 * XLM), &DIA);
+    assert_eq!(c.r.try_traspasar(&t, &sin), Err(Ok(Error::SinInsignia)));
+    assert_eq!(c.r.try_traspasar(&t, &equipo), Err(Ok(Error::EstadoInvalido)));
+    let (_, otro) = otro_equipo(&c);
+    c.r.entregar(&t, &prueba(&c));
+    assert_eq!(c.r.try_traspasar(&t, &otro), Err(Ok(Error::EstadoInvalido)));
+}
+
+#[test]
+fn el_traspaso_pide_la_firma_de_los_dos_humanos() {
+    let (c, equipo) = con_equipo();
+    let (beto, otro) = otro_equipo(&c);
+    let t = c.r.contratar(&c.cliente, &equipo, &soroban(), &(20 * XLM), &DIA);
+    c.r.traspasar(&t, &otro);
+    let firmantes: std::vec::Vec<Address> = c.env.auths().into_iter().map(|(a, _)| a).collect();
+    assert!(firmantes.contains(&c.humano));
+    assert!(firmantes.contains(&beto));
+}
+
+#[test]
+fn el_adelanto_paga_al_humano_y_el_resto_suma_al_final() {
+    let (c, equipo) = con_equipo();
+    let t = c.r.contratar(&c.cliente, &equipo, &soroban(), &(40 * XLM), &DIA);
+    assert_eq!(c.r.adelantar(&t, &(10 * XLM)), 30 * XLM);
+    assert_eq!(c.token.balance(&c.humano), 10 * XLM);
+    assert_eq!(c.token.balance(&c.r.address), 30 * XLM);
+    c.r.entregar(&t, &prueba(&c));
+    assert_eq!(c.r.aceptar(&t), 3);
+    assert_eq!(c.token.balance(&c.humano), 40 * XLM);
+}
+
+#[test]
+fn el_adelanto_no_puede_vaciar_la_custodia() {
+    let (c, equipo) = con_equipo();
+    let t = c.r.contratar(&c.cliente, &equipo, &soroban(), &(20 * XLM), &DIA);
+    assert_eq!(c.r.try_adelantar(&t, &(20 * XLM)), Err(Ok(Error::MontoInvalido)));
+    assert_eq!(c.r.try_adelantar(&t, &0), Err(Ok(Error::MontoInvalido)));
+}
