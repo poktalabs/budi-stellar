@@ -500,3 +500,30 @@ fn el_adelanto_no_puede_vaciar_la_custodia() {
     assert_eq!(c.r.try_adelantar(&t, &(20 * XLM)), Err(Ok(Error::MontoInvalido)));
     assert_eq!(c.r.try_adelantar(&t, &0), Err(Ok(Error::MontoInvalido)));
 }
+
+#[test]
+fn budi_reparte_una_disputa_y_nadie_suma() {
+    let (c, equipo) = con_equipo();
+    let antes = c.token.balance(&c.cliente);
+    let t = c.r.contratar(&c.cliente, &equipo, &soroban(), &(40 * XLM), &DIA);
+    c.r.entregar(&t, &prueba(&c));
+    c.r.disputar(&t, &motivo(&c, "Faltó la mitad"));
+    assert_eq!(c.r.try_resolver_parcial(&t, &(40 * XLM), &motivo(&c, "x")), Err(Ok(Error::MontoInvalido)));
+    c.r.resolver_parcial(&t, &(15 * XLM), &motivo(&c, "Entregó una parte"));
+    assert_eq!(c.token.balance(&c.humano), 15 * XLM);
+    assert_eq!(c.token.balance(&c.cliente), antes - 15 * XLM);
+    assert_eq!(c.r.puntaje(&equipo, &soroban()).puntos, 0);
+    assert_eq!(c.r.try_resolver_parcial(&t, &XLM, &motivo(&c, "x")), Err(Ok(Error::EstadoInvalido)));
+}
+
+#[test]
+fn cancelar_de_comun_acuerdo_regresa_todo_y_pide_las_dos_firmas() {
+    let (c, equipo) = con_equipo();
+    let antes = c.token.balance(&c.cliente);
+    let t = c.r.contratar(&c.cliente, &equipo, &soroban(), &(20 * XLM), &DIA);
+    c.r.cancelar_de_comun_acuerdo(&t);
+    let firmantes: std::vec::Vec<Address> = c.env.auths().into_iter().map(|(a, _)| a).collect();
+    assert!(firmantes.contains(&c.cliente) && firmantes.contains(&c.humano));
+    assert_eq!(c.token.balance(&c.cliente), antes);
+    assert_eq!(c.r.try_cancelar_de_comun_acuerdo(&t), Err(Ok(Error::EstadoInvalido)));
+}

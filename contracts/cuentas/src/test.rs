@@ -114,3 +114,20 @@ fn la_cuenta_paga_en_lote_aprueba_gastos_y_se_vacia() {
     assert_eq!(xlm.balance(&dir), 0);
     assert!(cta.try_retirar_todo(&sac.address(), &c.dueno).is_err());
 }
+
+#[test]
+fn la_cuenta_hace_varias_llamadas_en_una_transaccion() {
+    let c = caso();
+    let dir = c.registro.crear_cuenta(&c.agentes.address, &c.id);
+    let cta = cuenta::Client::new(&c.env, &dir);
+    let a2 = c.agentes.registrar_agente(&Address::generate(&c.env), &String::from_str(&c.env, "uri"));
+    let a3 = c.agentes.registrar_agente(&Address::generate(&c.env), &String::from_str(&c.env, "uri"));
+    let fb = Symbol::new(&c.env, "dar_feedback");
+    let args = |a: u32, p: u32| -> Vec<Val> {
+        vec![&c.env, dir.into_val(&c.env), a.into_val(&c.env), p.into_val(&c.env), symbol_short!("codigo").into_val(&c.env), String::from_str(&c.env, "pr").into_val(&c.env)]
+    };
+    let lote = vec![&c.env, (c.agentes.address.clone(), fb.clone(), args(a2, 70)), (c.agentes.address.clone(), fb, args(a3, 95))];
+    assert_eq!(cta.ejecutar_lote(&lote).len(), 2);
+    assert_eq!(c.agentes.feedback(&a2, &0).puntaje, 70);
+    assert_eq!(c.agentes.feedback(&a3, &0).puntaje, 95);
+}

@@ -102,3 +102,18 @@ fn quemar_un_agente_lo_da_de_baja() {
     assert_eq!(c.feedback(&id, &0).puntaje, 90);
     assert_eq!(c.registrar_agente(&dueno, &s(&env, "uri")), id + 1);
 }
+
+#[test]
+fn el_validador_delega_y_solo_el_nuevo_responde() {
+    let (env, c, dueno) = caso();
+    let id = c.registrar_agente(&dueno, &s(&env, "uri"));
+    let (v1, v2) = (Address::generate(&env), Address::generate(&env));
+    let trabajo = BytesN::from_array(&env, &[9; 32]);
+    c.pedir_validacion(&id, &v1, &trabajo);
+    assert_eq!(c.try_delegar_validacion(&trabajo, &dueno), Err(Ok(Error::AutoCalificacion)));
+    c.delegar_validacion(&trabajo, &v2);
+    assert_eq!(env.auths()[0].0, v1);
+    c.responder_validacion(&trabajo, &77);
+    assert_eq!(env.auths()[0].0, v2);
+    assert_eq!(c.try_delegar_validacion(&trabajo, &v1), Err(Ok(Error::ValidacionYaExiste)));
+}

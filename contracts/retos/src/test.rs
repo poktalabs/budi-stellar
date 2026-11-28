@@ -125,3 +125,14 @@ fn el_premio_se_divide_entre_las_cuentas_de_varios_agentes() {
     assert_eq!(c.xlm.balance(&c.cuentas.cuenta_de(&c.agentes.address, &otro)), 150);
     assert_eq!(c.retos.try_dividir_premio(&id, &lista), Err(Ok(Error::RetoCerrado)));
 }
+
+#[test]
+fn el_creador_rechaza_una_postulacion() {
+    let c = caso();
+    let id = c.retos.publicar_reto(&c.creador, &c.xlm.address, &300, &uri(&c.env));
+    c.retos.postular(&id, &c.agente);
+    c.retos.rechazar_postulacion(&id, &c.agente);
+    assert_eq!(c.env.auths()[0].0, c.creador);
+    assert_eq!(c.retos.try_elegir_ganador(&id, &c.agente), Err(Ok(Error::NoPostulado)));
+    assert_eq!(c.retos.try_rechazar_postulacion(&id, &c.agente), Err(Ok(Error::NoPostulado)));
+}

@@ -152,6 +152,15 @@ pub struct AgenteQuemado {
     pub dueno: Address,
 }
 
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ValidacionDelegada {
+    #[topic]
+    pub trabajo: BytesN<32>,
+    pub de: Address,
+    pub a: Address,
+}
+
 #[contract]
 pub struct Agentes;
 
@@ -297,6 +306,28 @@ impl Agentes {
         a.dueno.require_auth();
         env.storage().persistent().remove(&Clave::Agente(id));
         AgenteQuemado { id, dueno: a.dueno }.publish(&env);
+        Ok(())
+    }
+
+    /// El validador pedido le pasa una validación pendiente a otro validador (que no sea
+    /// el dueño del agente). Firma el validador actual.
+    pub fn delegar_validacion(env: Env, trabajo: BytesN<32>, a: Address) -> Result<(), Error> {
+        let mut v: Validacion = env
+            .storage()
+            .persistent()
+            .get(&Clave::Validacion(trabajo.clone()))
+            .ok_or(Error::ValidacionNoExiste)?;
+        v.validador.require_auth();
+        if v.respuesta.is_some() {
+            return Err(Error::ValidacionYaExiste);
+        }
+        if Self::agente(env.clone(), v.agente)?.dueno == a || v.validador == a {
+            return Err(Error::AutoCalificacion);
+        }
+        let de = v.validador.clone();
+        v.validador = a.clone();
+        poner(&env, &Clave::Validacion(trabajo.clone()), &v);
+        ValidacionDelegada { trabajo, de, a }.publish(&env);
         Ok(())
     }
 

@@ -104,6 +104,19 @@ impl Cuenta {
         r
     }
 
+    /// El dueño hace que la cuenta llame a varios contratos en una sola transacción
+    /// (todo o nada). Regresa lo que regresó cada llamada.
+    pub fn ejecutar_lote(env: Env, llamadas: Vec<(Address, Symbol, Vec<Val>)>) -> Vec<Val> {
+        Self::dueno(env.clone()).require_auth();
+        let mut res = Vec::new(&env);
+        for (contrato, funcion, args) in llamadas.iter() {
+            let r: Val = env.invoke_contract(&contrato, &funcion, args);
+            Ejecutado { contrato, funcion }.publish(&env);
+            res.push_back(r);
+        }
+        res
+    }
+
     /// El dueño paga a varios a la vez desde la cuenta del agente (por ejemplo, a los
     /// humanos que ayudaron en un reto). Regresa el total pagado.
     pub fn pagar_lote(env: Env, token: Address, pagos: Vec<(Address, i128)>) -> Result<i128, Error> {

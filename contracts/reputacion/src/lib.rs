@@ -299,6 +299,24 @@ pub struct Adelantado {
     pub queda: i128,
 }
 
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DisputaRepartida {
+    #[topic]
+    pub id: u32,
+    pub al_equipo: i128,
+    pub al_cliente: i128,
+    pub motivo: String,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CanceladoDeComunAcuerdo {
+    #[topic]
+    pub id: u32,
+    pub monto: i128,
+}
+
 #[contract]
 pub struct Reputacion;
 
@@ -699,6 +717,47 @@ impl Reputacion {
         }
         .publish(&env);
         Ok(t.monto)
+    }
+
+    /// Budi resuelve una disputa a medias: `al_equipo` va al humano (sin puntos: un
+    /// trabajo disputado y repartido no suma) y el resto regresa al cliente. Solo el admin.
+    pub fn resolver_parcial(env: Env, trabajo: u32, al_equipo: i128, motivo: String) -> Result<(), Error> {
+        Self::admin(env.clone()).require_auth();
+        let mut t = Self::trabajo(env.clone(), trabajo)?;
+        if t.estado != Estado::Disputado {
+            return Err(Error::EstadoInvalido);
+        }
+        if motivo.is_empty() {
+            return Err(Error::MotivoVacio);
+        }
+        if al_equipo <= 0 || al_equipo >= t.monto {
+            return Err(Error::MontoInvalido);
+        }
+        let al_cliente = t.monto - al_equipo;
+        let humano = Self::equipo(env.clone(), t.equipo)?.humano;
+        t.estado = Estado::Reembolsado;
+        Self::poner(&env, &Clave::Trabajo(trabajo), &t);
+        let tk = Self::token(&env);
+        tk.transfer(&env.current_contract_address(), &humano, &al_equipo);
+        tk.transfer(&env.current_contract_address(), &t.cliente, &al_cliente);
+        DisputaRepartida { id: trabajo, al_equipo, al_cliente, motivo }.publish(&env);
+        Ok(())
+    }
+
+    /// Cliente y humano acuerdan cancelar un trabajo que no se ha entregado: el cliente
+    /// recupera su pago completo y nadie suma. Firman los dos.
+    pub fn cancelar_de_comun_acuerdo(env: Env, trabajo: u32) -> Result<(), Error> {
+        let mut t = Self::trabajo(env.clone(), trabajo)?;
+        t.cliente.require_auth();
+        Self::equipo(env.clone(), t.equipo)?.humano.require_auth();
+        if t.estado != Estado::EnCustodia {
+            return Err(Error::EstadoInvalido);
+        }
+        t.estado = Estado::Reembolsado;
+        Self::poner(&env, &Clave::Trabajo(trabajo), &t);
+        Self::token(&env).transfer(&env.current_contract_address(), &t.cliente, &t.monto);
+        CanceladoDeComunAcuerdo { id: trabajo, monto: t.monto }.publish(&env);
+        Ok(())
     }
 
     /// Budi suma puntos por una evaluación calificada (la otra forma de renovar).

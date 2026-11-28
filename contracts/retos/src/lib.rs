@@ -244,6 +244,20 @@ impl Retos {
         Ok(())
     }
 
+    /// El creador saca a un agente de su reto (no cumple lo pedido). Firma el creador.
+    pub fn rechazar_postulacion(env: Env, reto: u32, agente: u32) -> Result<(), Error> {
+        let mut r = Self::reto(env.clone(), reto)?;
+        r.creador.require_auth();
+        if r.estado != EstadoReto::Abierto {
+            return Err(Error::RetoCerrado);
+        }
+        let i = r.postulantes.first_index_of(agente).ok_or(Error::NoPostulado)?;
+        r.postulantes.remove(i);
+        poner(&env, reto, &r);
+        PostulacionRetirada { reto, agente }.publish(&env);
+        Ok(())
+    }
+
     /// El creador reparte el premio en partes iguales entre varios agentes postulados
     /// (cada parte va a la cuenta de su agente; el sobrante de la división, al primero).
     pub fn dividir_premio(env: Env, reto: u32, ganadores: Vec<u32>) -> Result<i128, Error> {
