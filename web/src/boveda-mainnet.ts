@@ -19,6 +19,8 @@ const LECTOR = "GCL7OIN4KP646MU23OSR4PX6YJ5WBHCYPSRXQV2CGJZZVVYNA3D76BZO";
 
 let cuenta = "";
 let contrato = "";
+let examen = "";
+let insignias = "";
 
 function decir(id: string, html: string, error = false) {
   const el = $(id);
@@ -43,6 +45,11 @@ const ERRORES: Record<string, string> = {
   "2": "Ese código no abre la bóveda.",
   "3": "Esta wallet ya abrió la bóveda una vez.",
   "4": "La bóveda está vacía. Deposita primero.",
+};
+// Errores del contrato Examen (mismos números, otro contrato).
+const ERRORES_EXAMEN: Record<string, string> = {
+  "1": "Alguna respuesta no es correcta. Revisa y vuelve a presentar.",
+  "2": "Esta wallet ya aprobó el examen y tiene su insignia.",
 };
 const error = (e: unknown) => {
   const m = (e as Error).message;
@@ -75,7 +82,7 @@ $("conectar").addEventListener("click", () =>
       }
       decir("out-wallet", `Conectada: <b>${corta(cuenta)}</b>.`);
       if (!contrato) return;
-      for (const id of ["paso-depositar", "paso-reclamar", "paso-registro"]) $(id).classList.remove("off");
+      for (const id of ["paso-depositar", "paso-reclamar", "paso-registro", "paso-examen"]) $(id).classList.remove("off");
       for (const el of document.querySelectorAll<HTMLInputElement | HTMLButtonElement>("main input, main button")) el.disabled = false;
       await pintarSaldo();
     } catch (e) {
@@ -135,9 +142,45 @@ for (const btn of document.querySelectorAll<HTMLButtonElement>("button[data-fn]"
   );
 }
 
+$("presentar").addEventListener("click", () =>
+  ocupado($("presentar"), "Firma en Freighter…", async () => {
+    const r = ["p1", "p2", "p3"].map((p) => document.querySelector<HTMLInputElement>(`input[name=${p}]:checked`)?.value);
+    if (r.some((x) => !x)) return decir("out-examen", "Responde las 3 preguntas.", true);
+    try {
+      const hash = await escribir(cuenta, examen, "presentar", [yo(), xdr.ScVal.scvBytes(Buffer.from(r.join(""), "utf8"))]);
+      const id = await resultado(hash);
+      decir("out-examen", `¡Aprobaste! Tu insignia #${id} ya es tuya en Stellar. ${enlace(hash)}`);
+    } catch (e) {
+      const m = (e as Error).message;
+      const n = /Error\(Contract, #(\d+)\)/.exec(m)?.[1];
+      decir("out-examen", (n && ERRORES_EXAMEN[n]) || m, true);
+    }
+  }),
+);
+
+$("ver-insignia").addEventListener("click", () =>
+  ocupado($("ver-insignia"), "Firma en Freighter…", async () => {
+    try {
+      const hash = await escribir(cuenta, insignias, "insignias", [yo()]);
+      const lista = ((await resultado(hash)) as { id: number; ruta: string }[] | undefined) ?? [];
+      const texto = lista.length
+        ? `Tienes ${lista.length === 1 ? "1 insignia" : `${lista.length} insignias`}: ${lista.map((i) => `#${i.id} (${i.ruta})`).join(", ")}.`
+        : "Todavía no tienes insignias. Aprueba el examen.";
+      decir("out-examen", `${texto} ${enlace(hash)}`);
+    } catch (e) {
+      decir("out-examen", error(e), true);
+    }
+  }),
+);
+
 try {
   const r = await fetch("/boveda/mainnet/contrato.json", { cache: "no-store" });
-  if (r.ok) contrato = ((await r.json()) as { contrato?: string }).contrato ?? "";
+  if (r.ok) {
+    const j = (await r.json()) as { contrato?: string; examen?: string; insignias?: string };
+    contrato = j.contrato ?? "";
+    examen = j.examen ?? "";
+    insignias = j.insignias ?? "";
+  }
 } catch {
   /* sin archivo: aún no desplegada */
 }

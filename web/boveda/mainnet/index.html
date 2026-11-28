@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bóveda en mainnet · Budi para Stellar</title>
+<style>.quiz{border:0;margin:0 0 14px;padding:0}.quiz legend{font-weight:600;margin-bottom:6px}.quiz label{display:block;margin:4px 0;cursor:pointer}</style>
 <link rel="icon" href="/brand/logo.svg">
 <link rel="stylesheet" href="/src/style.css">
 </head>
@@ -69,6 +70,36 @@
           <button class="btn ghost" data-fn="admin" disabled>Quién la administra (<code>admin</code>)</button>
         </div>
         <p class="out" id="out-registro"></p>
+      </div>
+    </li>
+    <li class="step off" id="paso-examen">
+      <div class="n">5</div>
+      <div class="body">
+        <h2>Tu examen de la lección 1 y tu insignia</h2>
+        <p>Responde las 3 preguntas. El contrato <code>Examen</code> revisa tus respuestas (guarda solo su huella) y, si las 3 están bien, te otorga tu insignia en Stellar: un NFT que no se transfiere (<code>presentar</code>).</p>
+        <fieldset class="quiz">
+          <legend>1. ¿Con qué se pagan las comisiones en Stellar?</legend>
+          <label><input type="radio" name="p1" value="a" disabled> ETH</label>
+          <label><input type="radio" name="p1" value="b" disabled> XLM</label>
+          <label><input type="radio" name="p1" value="c" disabled> USDC</label>
+        </fieldset>
+        <fieldset class="quiz">
+          <legend>2. En tu Bitácora, ¿quién puede registrar un hito a tu nombre?</legend>
+          <label><input type="radio" name="p2" value="a" disabled> Cualquiera</label>
+          <label><input type="radio" name="p2" value="b" disabled> El admin del contrato</label>
+          <label><input type="radio" name="p2" value="c" disabled> Solo tú, con tu firma</label>
+        </fieldset>
+        <fieldset class="quiz">
+          <legend>3. Después de registrar un hito, ¿dónde vive?</legend>
+          <label><input type="radio" name="p3" value="a" disabled> En la red de Stellar</label>
+          <label><input type="radio" name="p3" value="b" disabled> En el servidor de Budi</label>
+          <label><input type="radio" name="p3" value="c" disabled> En tu computadora</label>
+        </fieldset>
+        <div class="row">
+          <button class="btn primary" id="presentar" disabled>Presentar examen</button>
+          <button class="btn ghost" id="ver-insignia" disabled>Ver mi insignia (<code>insignias</code>)</button>
+        </div>
+        <p class="out" id="out-examen"></p>
       </div>
     </li>
   </ol>
