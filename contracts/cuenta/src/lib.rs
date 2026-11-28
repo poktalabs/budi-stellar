@@ -16,6 +16,7 @@ enum Clave {
     Agentes,
     Agente,
     Operador,
+    Congelada,
 }
 
 /// La llave con la que el agente opera solo (su runtime), con un tope por pago.
@@ -39,6 +40,8 @@ pub enum Error {
     MontoInvalido = 1,
     SinOperador = 2,
     ExcedeTope = 3,
+    Congelada = 4,
+    NoCongelada = 5,
 }
 
 #[contractevent]
@@ -117,6 +120,18 @@ pub struct PagoDelOperador {
     pub llave: Address,
     pub a: Address,
     pub monto: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CuentaCongelada {
+    pub por: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CuentaDescongelada {
+    pub por: Address,
 }
 
 #[contract]
@@ -244,6 +259,9 @@ impl Cuenta {
     pub fn pago_operador(env: Env, a: Address, monto: i128) -> Result<(), Error> {
         let op: Operador = env.storage().instance().get(&Clave::Operador).ok_or(Error::SinOperador)?;
         op.llave.require_auth();
+        if Self::congelada(env.clone()) {
+            return Err(Error::Congelada);
+        }
         if monto <= 0 {
             return Err(Error::MontoInvalido);
         }
@@ -253,6 +271,36 @@ impl Cuenta {
         token::Client::new(&env, &op.token).transfer(&env.current_contract_address(), &a, &monto);
         PagoDelOperador { llave: op.llave, a, monto }.publish(&env);
         Ok(())
+    }
+
+    /// El dueño congela la cuenta: el agente deja de pagar solo con su llave de operador
+    /// (por ejemplo, si su runtime se comporta raro), sin perder su configuración. El dueño
+    /// sigue pudiendo pagar y retirar.
+    pub fn congelar_cuenta(env: Env) -> Result<(), Error> {
+        let dueno = Self::dueno(env.clone());
+        dueno.require_auth();
+        if Self::congelada(env.clone()) {
+            return Err(Error::Congelada);
+        }
+        env.storage().instance().set(&Clave::Congelada, &true);
+        CuentaCongelada { por: dueno }.publish(&env);
+        Ok(())
+    }
+
+    /// El dueño descongela la cuenta: el operador vuelve a pagar dentro de su tope.
+    pub fn descongelar_cuenta(env: Env) -> Result<(), Error> {
+        let dueno = Self::dueno(env.clone());
+        dueno.require_auth();
+        if !Self::congelada(env.clone()) {
+            return Err(Error::NoCongelada);
+        }
+        env.storage().instance().remove(&Clave::Congelada);
+        CuentaDescongelada { por: dueno }.publish(&env);
+        Ok(())
+    }
+
+    pub fn congelada(env: Env) -> bool {
+        env.storage().instance().get(&Clave::Congelada).unwrap_or(false)
     }
 
     /// La llave de operador del agente, si tiene.

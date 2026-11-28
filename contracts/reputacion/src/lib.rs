@@ -133,6 +133,7 @@ enum Clave {
     Trabajo(u32),
     Registros(u32, Symbol),
     Pausado(u32),
+    Retirada(Symbol),
 }
 
 /// Lo único que Reputación le pregunta a Insignias.
@@ -162,6 +163,34 @@ pub enum Error {
     MotivoVacio = 15,
     EquipoPausado = 16,
     EquipoNoPausado = 17,
+    HabilidadRetirada = 18,
+    MismoAdmin = 19,
+    SinPuntos = 20,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdminCambiado {
+    #[topic]
+    pub de: Address,
+    pub a: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HabilidadRetiradaEv {
+    #[topic]
+    pub habilidad: Symbol,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PuntajeRenovado {
+    #[topic]
+    pub equipo: u32,
+    pub habilidad: Symbol,
+    pub registros: u32,
+    pub vence: u64,
 }
 
 #[contractevent]
@@ -360,8 +389,71 @@ impl Reputacion {
         {
             return Err(Error::ReglasInvalidas);
         }
+        env.storage().persistent().remove(&Clave::Retirada(habilidad.clone()));
         Self::poner(&env, &Clave::Habilidad(habilidad), &reglas);
         Ok(())
+    }
+
+    /// Budi cede la administración a otra cuenta (por ejemplo, a una multifirma).
+    /// Firman el admin actual y el nuevo, para no ceder a una cuenta que nadie controla.
+    pub fn cambiar_admin(env: Env, nuevo: Address) -> Result<(), Error> {
+        let actual = Self::admin(env.clone());
+        actual.require_auth();
+        nuevo.require_auth();
+        if nuevo == actual {
+            return Err(Error::MismoAdmin);
+        }
+        env.storage().instance().set(&Clave::Admin, &nuevo);
+        AdminCambiado { de: actual, a: nuevo }.publish(&env);
+        Ok(())
+    }
+
+    /// Budi retira una habilidad: ya no se contrata ni se evalúa en ella. Los trabajos en
+    /// curso terminan y los puntos ganados siguen hasta que venzan. `definir_habilidad`
+    /// la vuelve a abrir. Solo el admin.
+    pub fn retirar_habilidad(env: Env, habilidad: Symbol) -> Result<(), Error> {
+        Self::admin(env.clone()).require_auth();
+        Self::habilidad(env.clone(), habilidad.clone())?;
+        if Self::retirada(&env, &habilidad) {
+            return Err(Error::HabilidadRetirada);
+        }
+        Self::poner(&env, &Clave::Retirada(habilidad.clone()), &true);
+        HabilidadRetiradaEv { habilidad }.publish(&env);
+        Ok(())
+    }
+
+    /// Renovación del puntaje (como la recertificación de un consejo médico): el humano la
+    /// pide y Budi la aprueba (firman los dos) tras revisar que el equipo sigue al día. Los
+    /// registros vigentes vuelven a durar una `vigencia` completa desde hoy. El humano
+    /// necesita seguir teniendo la insignia. Regresa cuántos registros se renovaron.
+    pub fn renovar_puntaje(env: Env, equipo: u32, habilidad: Symbol) -> Result<u32, Error> {
+        Self::admin(env.clone()).require_auth();
+        let e = Self::equipo(env.clone(), equipo)?;
+        e.humano.require_auth();
+        if !e.activo {
+            return Err(Error::EquipoRetirado);
+        }
+        let reglas = Self::habilidad(env.clone(), habilidad.clone())?;
+        if Self::retirada(&env, &habilidad) {
+            return Err(Error::HabilidadRetirada);
+        }
+        Self::con_insignia(&env, &e.humano, &reglas)?;
+        let ahora = env.ledger().timestamp();
+        let vence = ahora + reglas.vigencia;
+        let mut renovados = Vec::new(&env);
+        for mut r in Self::registros(&env, equipo, &habilidad).iter() {
+            if r.vence > ahora {
+                r.vence = vence;
+                renovados.push_back(r);
+            }
+        }
+        let n = renovados.len();
+        if n == 0 {
+            return Err(Error::SinPuntos);
+        }
+        Self::poner(&env, &Clave::Registros(equipo, habilidad.clone()), &renovados);
+        PuntajeRenovado { equipo, habilidad, registros: n, vence }.publish(&env);
+        Ok(n)
     }
 
     /// Forma un equipo humano + agente. Firman Budi (que lo emite), el humano y el agente.
@@ -459,6 +551,9 @@ impl Reputacion {
             return Err(Error::MontoInvalido);
         }
         let reglas = Self::habilidad(env.clone(), habilidad.clone())?;
+        if Self::retirada(&env, &habilidad) {
+            return Err(Error::HabilidadRetirada);
+        }
         let e = Self::equipo(env.clone(), equipo)?;
         if !e.activo {
             return Err(Error::EquipoRetirado);
@@ -826,6 +921,9 @@ impl Reputacion {
         if puntos == 0 || puntos > reglas.tope_evaluacion {
             return Err(Error::PuntosInvalidos);
         }
+        if Self::retirada(&env, &habilidad) {
+            return Err(Error::HabilidadRetirada);
+        }
         let e = Self::equipo(env.clone(), equipo)?;
         if !e.activo {
             return Err(Error::EquipoRetirado);
@@ -921,6 +1019,10 @@ impl Reputacion {
 
     pub fn admin(env: Env) -> Address {
         env.storage().instance().get(&Clave::Admin).unwrap()
+    }
+
+    fn retirada(env: &Env, habilidad: &Symbol) -> bool {
+        env.storage().persistent().get(&Clave::Retirada(habilidad.clone())).unwrap_or(false)
     }
 
     fn token(env: &Env) -> token::Client<'_> {

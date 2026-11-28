@@ -42,6 +42,18 @@ enum Clave {
     Cuentas,
     Siguiente,
     Reto(u32),
+    Invitados(u32),
+    Fecha(u32),
+    Nota(u32),
+}
+
+/// La calificación que deja el creador sobre la entrega ganadora.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Calificacion {
+    pub agente: u32,
+    pub nota: u32,
+    pub comentario: String,
 }
 
 #[contractclient(name = "AgentesClient")]
@@ -68,6 +80,38 @@ pub enum Error {
     TienePostulantes = 8,
     NoEstaCancelado = 9,
     MismoCreador = 10,
+    NoInvitado = 11,
+    FechaInvalida = 12,
+    FechaVencida = 13,
+    NotaInvalida = 14,
+    NoPagado = 15,
+    YaCalificado = 16,
+    YaInvitado = 17,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FechaAmpliada {
+    #[topic]
+    pub reto: u32,
+    pub fecha: u64,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AgenteInvitado {
+    #[topic]
+    pub reto: u32,
+    pub agente: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EntregaCalificada {
+    #[topic]
+    pub reto: u32,
+    pub agente: u32,
+    pub nota: u32,
 }
 
 #[contractevent]
@@ -195,6 +239,15 @@ impl Retos {
         }
         if dueno == r.creador {
             return Err(Error::EsDelCreador);
+        }
+        if let Some(fecha) = env.storage().persistent().get::<_, u64>(&Clave::Fecha(reto)) {
+            if env.ledger().timestamp() > fecha {
+                return Err(Error::FechaVencida);
+            }
+        }
+        let invitados = Self::invitados(env.clone(), reto);
+        if !invitados.is_empty() && !invitados.contains(agente) {
+            return Err(Error::NoInvitado);
         }
         if r.postulantes.contains(agente) {
             return Err(Error::YaPostulado);
@@ -379,6 +432,70 @@ impl Retos {
         Ok(())
     }
 
+    /// El creador fija o amplía la fecha límite (segundos unix) para postularse a un reto
+    /// abierto. Solo se mueve hacia adelante: nunca se le acorta el tiempo a quien ya trabaja.
+    pub fn ampliar_fecha_reto(env: Env, reto: u32, fecha: u64) -> Result<(), Error> {
+        let r = Self::reto(env.clone(), reto)?;
+        r.creador.require_auth();
+        if r.estado != EstadoReto::Abierto {
+            return Err(Error::RetoCerrado);
+        }
+        let antes: u64 = env.storage().persistent().get(&Clave::Fecha(reto)).unwrap_or(0);
+        if fecha <= env.ledger().timestamp() || fecha <= antes {
+            return Err(Error::FechaInvalida);
+        }
+        guardar(&env, &Clave::Fecha(reto), &fecha);
+        FechaAmpliada { reto, fecha }.publish(&env);
+        Ok(())
+    }
+
+    /// El creador invita a un agente a su reto. Con al menos un invitado, el reto es
+    /// privado: solo los agentes invitados pueden postularse.
+    pub fn invitar_agente(env: Env, reto: u32, agente: u32) -> Result<(), Error> {
+        let r = Self::reto(env.clone(), reto)?;
+        r.creador.require_auth();
+        if r.estado != EstadoReto::Abierto {
+            return Err(Error::RetoCerrado);
+        }
+        // El agente tiene que existir en Agentes.
+        AgentesClient::new(&env, &Self::agentes(&env)).dueno(&agente);
+        let mut invitados = Self::invitados(env.clone(), reto);
+        if invitados.contains(agente) {
+            return Err(Error::YaInvitado);
+        }
+        invitados.push_back(agente);
+        guardar(&env, &Clave::Invitados(reto), &invitados);
+        AgenteInvitado { reto, agente }.publish(&env);
+        Ok(())
+    }
+
+    /// El creador califica (1 a 5) la entrega del agente que ganó, con un comentario
+    /// público. Una sola vez por reto, y solo después de pagar.
+    pub fn calificar_entrega(env: Env, reto: u32, nota: u32, comentario: String) -> Result<(), Error> {
+        let r = Self::reto(env.clone(), reto)?;
+        r.creador.require_auth();
+        if r.estado != EstadoReto::Pagado {
+            return Err(Error::NoPagado);
+        }
+        if nota == 0 || nota > 5 {
+            return Err(Error::NotaInvalida);
+        }
+        if env.storage().persistent().has(&Clave::Nota(reto)) {
+            return Err(Error::YaCalificado);
+        }
+        guardar(&env, &Clave::Nota(reto), &Calificacion { agente: r.ganador, nota, comentario });
+        EntregaCalificada { reto, agente: r.ganador, nota }.publish(&env);
+        Ok(())
+    }
+
+    pub fn invitados(env: Env, reto: u32) -> Vec<u32> {
+        env.storage().persistent().get(&Clave::Invitados(reto)).unwrap_or(Vec::new(&env))
+    }
+
+    pub fn calificacion(env: Env, reto: u32) -> Option<Calificacion> {
+        env.storage().persistent().get(&Clave::Nota(reto))
+    }
+
     pub fn reto(env: Env, id: u32) -> Result<Reto, Error> {
         env.storage().persistent().get(&Clave::Reto(id)).ok_or(Error::RetoNoExiste)
     }
@@ -391,6 +508,11 @@ impl Retos {
 fn poner(env: &Env, id: u32, r: &Reto) {
     env.storage().persistent().set(&Clave::Reto(id), r);
     env.storage().persistent().extend_ttl(&Clave::Reto(id), TTL_UMBRAL, TTL_EXTENDER);
+}
+
+fn guardar<V: soroban_sdk::IntoVal<Env, soroban_sdk::Val>>(env: &Env, clave: &Clave, valor: &V) {
+    env.storage().persistent().set(clave, valor);
+    env.storage().persistent().extend_ttl(clave, TTL_UMBRAL, TTL_EXTENDER);
 }
 
 #[cfg(test)]

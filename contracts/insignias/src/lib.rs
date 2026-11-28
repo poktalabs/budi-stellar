@@ -89,6 +89,14 @@ pub struct UriFijada {
     pub uri_base: String,
 }
 
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EmisorCambiado {
+    #[topic]
+    pub anterior: Address,
+    pub nuevo: Address,
+}
+
 #[contract]
 pub struct Insignias;
 
@@ -104,6 +112,33 @@ impl Insignias {
     /// Regresa el id de la insignia.
     pub fn otorgar(env: Env, titular: Address, ruta: Symbol) -> Result<u32, Error> {
         Self::emisor(env.clone()).require_auth();
+        Self::emitir(&env, titular, ruta)
+    }
+
+    /// El emisor otorga la insignia de `ruta` a varias personas en una sola transacción
+    /// (por ejemplo, a toda una cohorte que terminó). Todo o nada: si alguien ya la tiene,
+    /// no se otorga a nadie. Regresa los ids en el mismo orden.
+    pub fn otorgar_lote(env: Env, titulares: Vec<Address>, ruta: Symbol) -> Result<Vec<u32>, Error> {
+        Self::emisor(env.clone()).require_auth();
+        let mut ids = Vec::new(&env);
+        for titular in titulares.iter() {
+            ids.push_back(Self::emitir(&env, titular, ruta.clone())?);
+        }
+        Ok(ids)
+    }
+
+    /// El emisor actual pasa el poder de otorgar y revocar a `nuevo` (por ejemplo, a un
+    /// contrato de examen o a una llave nueva). Firman los dos: nadie recibe el rol sin querer.
+    pub fn cambiar_emisor(env: Env, nuevo: Address) {
+        let actual = Self::emisor(env.clone());
+        actual.require_auth();
+        nuevo.require_auth();
+        env.storage().instance().set(&Clave::Emisor, &nuevo);
+        EmisorCambiado { anterior: actual, nuevo }.publish(&env);
+    }
+
+    fn emitir(env: &Env, titular: Address, ruta: Symbol) -> Result<u32, Error> {
+        let env = env.clone();
         let por_ruta = Clave::PorRuta(titular.clone(), ruta.clone());
         if env.storage().persistent().has(&por_ruta) {
             return Err(Error::YaLaTiene);

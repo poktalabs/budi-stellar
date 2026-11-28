@@ -175,3 +175,44 @@ fn traspasar_reto_al_nuevo_creador() {
     c.retos.cancelar_reto(&id);
     assert_eq!(c.xlm.balance(&empresa), 300);
 }
+
+#[test]
+fn la_fecha_limite_solo_se_amplia_y_despues_nadie_se_postula() {
+    use soroban_sdk::testutils::Ledger;
+    let c = caso();
+    c.env.ledger().set_timestamp(1_000);
+    let id = c.retos.publicar_reto(&c.creador, &c.xlm.address, &100, &uri(&c.env));
+    assert_eq!(c.retos.try_ampliar_fecha_reto(&id, &500), Err(Ok(Error::FechaInvalida)));
+    c.retos.ampliar_fecha_reto(&id, &2_000);
+    assert_eq!(c.retos.try_ampliar_fecha_reto(&id, &1_500), Err(Ok(Error::FechaInvalida)));
+    c.retos.ampliar_fecha_reto(&id, &3_000);
+    c.env.ledger().set_timestamp(3_001);
+    assert_eq!(c.retos.try_postular(&id, &c.agente), Err(Ok(Error::FechaVencida)));
+}
+
+#[test]
+fn un_reto_con_invitados_solo_acepta_a_los_invitados() {
+    let c = caso();
+    let otro = c.agentes.registrar_agente(&Address::generate(&c.env), &String::from_str(&c.env, "uri2"));
+    let id = c.retos.publicar_reto(&c.creador, &c.xlm.address, &100, &uri(&c.env));
+    c.retos.invitar_agente(&id, &c.agente);
+    assert_eq!(c.retos.try_invitar_agente(&id, &c.agente), Err(Ok(Error::YaInvitado)));
+    assert_eq!(c.retos.try_postular(&id, &otro), Err(Ok(Error::NoInvitado)));
+    c.retos.postular(&id, &c.agente);
+    assert_eq!(c.retos.invitados(&id).len(), 1);
+}
+
+#[test]
+fn el_creador_califica_la_entrega_ganadora_una_vez() {
+    let c = caso();
+    let id = c.retos.publicar_reto(&c.creador, &c.xlm.address, &100, &uri(&c.env));
+    c.retos.postular(&id, &c.agente);
+    let nota = String::from_str(&c.env, "entrega limpia");
+    assert_eq!(c.retos.try_calificar_entrega(&id, &5, &nota), Err(Ok(Error::NoPagado)));
+    c.retos.elegir_ganador(&id, &c.agente);
+    assert_eq!(c.retos.try_calificar_entrega(&id, &6, &nota), Err(Ok(Error::NotaInvalida)));
+    c.retos.calificar_entrega(&id, &5, &nota);
+    assert_eq!(c.retos.try_calificar_entrega(&id, &4, &nota), Err(Ok(Error::YaCalificado)));
+    let cal = c.retos.calificacion(&id).unwrap();
+    assert_eq!((cal.agente, cal.nota), (c.agente, 5));
+}

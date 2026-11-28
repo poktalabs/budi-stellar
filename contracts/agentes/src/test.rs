@@ -156,3 +156,28 @@ fn solo_el_dueno_pausa() {
     env.set_auths(&[]);
     c.pausar_agente(&id);
 }
+
+#[test]
+fn agrega_y_quita_habilidades() {
+    let (env, c, dueno) = caso();
+    let id = c.registrar_agente(&dueno, &s(&env, "https://budi.lat/agentes/budi.json"));
+    c.agregar_habilidad(&id, &symbol_short!("soroban"));
+    c.agregar_habilidad(&id, &symbol_short!("rust"));
+    assert_eq!(c.try_agregar_habilidad(&id, &symbol_short!("soroban")), Err(Ok(Error::YaTieneHabilidad)));
+    assert_eq!(c.habilidades(&id).len(), 2);
+    c.quitar_habilidad(&id, &symbol_short!("soroban"));
+    assert_eq!(c.habilidades(&id), soroban_sdk::vec![&env, symbol_short!("rust")]);
+    assert_eq!(c.try_quitar_habilidad(&id, &symbol_short!("soroban")), Err(Ok(Error::SinHabilidad)));
+}
+
+#[test]
+fn solo_el_dueno_declara_habilidades() {
+    let env = Env::default();
+    let cid = env.register(Agentes, ());
+    let c = AgentesClient::new(&env, &cid);
+    let dueno = Address::generate(&env);
+    env.mock_all_auths();
+    let id = c.registrar_agente(&dueno, &s(&env, "ipfs://a"));
+    env.set_auths(&[]);
+    assert!(c.try_agregar_habilidad(&id, &symbol_short!("soroban")).is_err());
+}

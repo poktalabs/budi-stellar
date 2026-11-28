@@ -159,3 +159,31 @@ fn el_emisor_fija_la_uri_y_cada_insignia_apunta_a_su_metadata() {
     assert_eq!(c.token_uri(&12), String::from_str(&env, "https://stellar.budi.lat/insignias/12.json"));
     assert_eq!(c.try_token_uri(&99), Err(Ok(Error::NoExiste)));
 }
+
+#[test]
+fn otorga_en_lote_a_una_cohorte_todo_o_nada() {
+    let (env, client, _) = setup();
+    env.mock_all_auths();
+    let ruta = symbol_short!("soroban1");
+    let ana = Address::generate(&env);
+    let beto = Address::generate(&env);
+    let ids = client.otorgar_lote(&soroban_sdk::vec![&env, ana.clone(), beto.clone()], &ruta);
+    assert_eq!(ids, soroban_sdk::vec![&env, 1u32, 2u32]);
+    assert!(client.tiene(&ana, &ruta) && client.tiene(&beto, &ruta));
+    // Si alguien ya la tiene, no se otorga a nadie.
+    let caro = Address::generate(&env);
+    let r = client.try_otorgar_lote(&soroban_sdk::vec![&env, caro.clone(), ana.clone()], &ruta);
+    assert_eq!(r, Err(Ok(Error::YaLaTiene)));
+    assert!(!client.tiene(&caro, &ruta));
+}
+
+#[test]
+fn cambia_el_emisor_con_la_firma_de_los_dos() {
+    let (env, client, emisor) = setup();
+    env.mock_all_auths();
+    let nuevo = Address::generate(&env);
+    client.cambiar_emisor(&nuevo);
+    let firmas: std::vec::Vec<Address> = env.auths().iter().map(|(a, _)| a.clone()).collect();
+    assert!(firmas.contains(&emisor) && firmas.contains(&nuevo));
+    assert_eq!(client.emisor(), nuevo);
+}

@@ -543,3 +543,46 @@ fn equipo_pausado_no_toma_trabajos_y_al_reanudar_si() {
     assert!(!c.r.equipo_pausado(&equipo));
     c.r.contratar(&c.cliente, &equipo, &soroban(), &(30 * XLM), &DIA);
 }
+
+#[test]
+fn el_admin_cede_la_administracion_con_las_dos_firmas() {
+    let c = caso();
+    let viejo = c.r.admin();
+    let nuevo = Address::generate(&c.env);
+    assert_eq!(c.r.try_cambiar_admin(&viejo), Err(Ok(Error::MismoAdmin)));
+    c.r.cambiar_admin(&nuevo);
+    let firmantes: std::vec::Vec<Address> = c.env.auths().into_iter().map(|(a, _)| a).collect();
+    assert!(firmantes.contains(&viejo) && firmantes.contains(&nuevo));
+    assert_eq!(c.r.admin(), nuevo);
+}
+
+#[test]
+fn una_habilidad_retirada_no_se_contrata_ni_se_evalua_y_los_puntos_siguen() {
+    let (c, equipo) = con_equipo();
+    let t = c.r.contratar(&c.cliente, &equipo, &soroban(), &(30 * XLM), &DIA);
+    c.r.entregar(&t, &prueba(&c));
+    c.r.aceptar(&t);
+    c.r.retirar_habilidad(&soroban());
+    assert_eq!(c.r.try_retirar_habilidad(&soroban()), Err(Ok(Error::HabilidadRetirada)));
+    assert_eq!(
+        c.r.try_contratar(&c.cliente, &equipo, &soroban(), &(30 * XLM), &DIA),
+        Err(Ok(Error::HabilidadRetirada))
+    );
+    assert_eq!(c.r.try_evaluar(&equipo, &soroban(), &1), Err(Ok(Error::HabilidadRetirada)));
+    assert_eq!(c.r.puntaje(&equipo, &soroban()).puntos, 3);
+}
+
+#[test]
+fn renovar_el_puntaje_alarga_la_vigencia_de_los_registros() {
+    let (c, equipo) = con_equipo();
+    assert_eq!(c.r.try_renovar_puntaje(&equipo, &soroban()), Err(Ok(Error::SinPuntos)));
+    let t = c.r.contratar(&c.cliente, &equipo, &soroban(), &(20 * XLM), &DIA);
+    c.r.entregar(&t, &prueba(&c));
+    c.r.aceptar(&t);
+    c.env.ledger().with_mut(|l| l.timestamp += 300 * DIA);
+    assert_eq!(c.r.renovar_puntaje(&equipo, &soroban()), 1);
+    let firmantes: std::vec::Vec<Address> = c.env.auths().into_iter().map(|(a, _)| a).collect();
+    assert!(firmantes.contains(&c.humano) && firmantes.contains(&c.r.admin()));
+    c.env.ledger().with_mut(|l| l.timestamp += 300 * DIA);
+    assert_eq!(c.r.puntaje(&equipo, &soroban()).puntos, 2);
+}

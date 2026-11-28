@@ -12,7 +12,7 @@
 
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype, Address, BytesN, Env,
-    String, Symbol,
+    String, Symbol, Vec,
 };
 
 const TTL_UMBRAL: u32 = 17_280;
@@ -62,6 +62,7 @@ enum Clave {
     Validacion(BytesN<32>),
     Cuenta(u32),
     Pausado(u32),
+    Habilidades(u32),
 }
 
 #[contracterror]
@@ -81,6 +82,24 @@ pub enum Error {
     AgentePausado = 11,
     NoEstaPausado = 12,
     YaPausado = 13,
+    YaTieneHabilidad = 14,
+    SinHabilidad = 15,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HabilidadAgregada {
+    #[topic]
+    pub id: u32,
+    pub habilidad: Symbol,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HabilidadQuitada {
+    #[topic]
+    pub id: u32,
+    pub habilidad: Symbol,
 }
 
 #[contractevent]
@@ -416,6 +435,36 @@ impl Agentes {
         poner(&env, &Clave::Agente(id), &a);
         PerfilActualizado { id, uri }.publish(&env);
         Ok(())
+    }
+
+    /// El dueño declara una habilidad del agente (por ejemplo `soroban`), para que quien
+    /// contrata lo encuentre por habilidad. Declarar no prueba nada: la reputación por
+    /// habilidad se gana con trabajo pagado en Reputación.
+    pub fn agregar_habilidad(env: Env, id: u32, habilidad: Symbol) -> Result<(), Error> {
+        Self::agente(env.clone(), id)?.dueno.require_auth();
+        let mut hs = Self::habilidades(env.clone(), id);
+        if hs.contains(&habilidad) {
+            return Err(Error::YaTieneHabilidad);
+        }
+        hs.push_back(habilidad.clone());
+        poner(&env, &Clave::Habilidades(id), &hs);
+        HabilidadAgregada { id, habilidad }.publish(&env);
+        Ok(())
+    }
+
+    /// El dueño retira una habilidad que el agente ya no ofrece.
+    pub fn quitar_habilidad(env: Env, id: u32, habilidad: Symbol) -> Result<(), Error> {
+        Self::agente(env.clone(), id)?.dueno.require_auth();
+        let mut hs = Self::habilidades(env.clone(), id);
+        let i = hs.first_index_of(&habilidad).ok_or(Error::SinHabilidad)?;
+        hs.remove(i);
+        poner(&env, &Clave::Habilidades(id), &hs);
+        HabilidadQuitada { id, habilidad }.publish(&env);
+        Ok(())
+    }
+
+    pub fn habilidades(env: Env, id: u32) -> Vec<Symbol> {
+        env.storage().persistent().get(&Clave::Habilidades(id)).unwrap_or(Vec::new(&env))
     }
 
     pub fn cuenta_vinculada(env: Env, id: u32) -> Option<Address> {

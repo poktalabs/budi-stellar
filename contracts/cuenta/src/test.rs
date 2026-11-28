@@ -87,3 +87,23 @@ fn rotar_la_llave_invalida_la_anterior() {
     assert_eq!(op.tope_por_pago, 50);
     assert_eq!(c.cta.try_fijar_operador(&nueva, &c.token, &0), Err(Ok(Error::MontoInvalido)));
 }
+
+#[test]
+fn congelar_frena_al_operador_y_descongelar_lo_regresa() {
+    let c = caso();
+    let llave = Address::generate(&c.env);
+    let ana = Address::generate(&c.env);
+    c.cta.fijar_operador(&llave, &c.token, &100);
+    c.cta.congelar_cuenta();
+    assert_eq!(c.env.auths()[0].0, c.dueno);
+    assert!(c.cta.congelada());
+    assert_eq!(c.cta.try_pago_operador(&ana, &50), Err(Ok(Error::Congelada)));
+    assert_eq!(c.cta.try_congelar_cuenta(), Err(Ok(Error::Congelada)));
+    // El dueño sigue pudiendo pagar.
+    c.cta.pagar(&c.token, &ana, &10);
+    c.cta.descongelar_cuenta();
+    assert!(!c.cta.congelada());
+    c.cta.pago_operador(&ana, &50);
+    assert_eq!(TokenClient::new(&c.env, &c.token).balance(&ana), 60);
+    assert_eq!(c.cta.try_descongelar_cuenta(), Err(Ok(Error::NoCongelada)));
+}
