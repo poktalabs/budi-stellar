@@ -224,3 +224,27 @@ fn cerrar_inscripciones_bloquea_nuevos_alumnos() {
     c.m.completar(&id);
     assert!(c.m.inscrito(&c.alumno, &symbol_short!("soroban")));
 }
+
+#[test]
+fn reabrir_inscripciones_deja_entrar_otra_vez() {
+    let c = caso();
+    let curso = symbol_short!("soroban");
+    assert_eq!(c.m.try_reabrir_inscripciones(&curso), Err(Ok(Error::CursoAbierto)));
+    c.m.cerrar_inscripciones(&curso);
+    assert_eq!(c.m.try_inscribir(&c.alumno, &curso), Err(Ok(Error::CursoCerrado)));
+    c.m.reabrir_inscripciones(&curso);
+    c.m.inscribir(&c.alumno, &curso);
+    assert!(c.m.inscrito(&c.alumno, &curso));
+}
+
+#[test]
+fn transferir_admin_pasa_el_control() {
+    let c = caso();
+    let nuevo = Address::generate(&c.env);
+    assert_eq!(c.m.try_transferir_admin(&c.admin), Err(Ok(Error::MismoAdmin)));
+    c.m.transferir_admin(&nuevo);
+    let auths = c.env.auths();
+    assert_eq!(c.m.admin(), nuevo);
+    assert!(auths.iter().any(|(a, _)| *a == c.admin));
+    assert!(auths.iter().any(|(a, _)| *a == nuevo));
+}

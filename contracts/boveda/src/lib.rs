@@ -20,6 +20,7 @@ enum Clave {
     Token,
     Codigo,
     Reclamo(Address),
+    Pausa,
 }
 
 #[contracterror]
@@ -30,6 +31,9 @@ pub enum Error {
     CodigoIncorrecto = 2,
     YaReclamaste = 3,
     BovedaVacia = 4,
+    BovedaEnPausa = 5,
+    YaEnPausa = 6,
+    NoEstaEnPausa = 7,
 }
 
 #[contractevent]
@@ -63,6 +67,20 @@ pub struct CodigoCambiado {
     pub admin: Address,
 }
 
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BovedaPausada {
+    #[topic]
+    pub admin: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BovedaReanudada {
+    #[topic]
+    pub admin: Address,
+}
+
 #[contract]
 pub struct Boveda;
 
@@ -92,6 +110,9 @@ impl Boveda {
     /// Con el código correcto, `quien` se lleva todo el saldo. Una vez por dirección.
     pub fn reclamar(env: Env, quien: Address, codigo: Bytes) -> Result<i128, Error> {
         quien.require_auth();
+        if Self::en_pausa(env.clone()) {
+            return Err(Error::BovedaEnPausa);
+        }
         let esperado: BytesN<32> = env.storage().instance().get(&Clave::Codigo).unwrap();
         let hash: BytesN<32> = env.crypto().sha256(&normalizar(&env, &codigo)).into();
         if hash != esperado {
@@ -154,6 +175,38 @@ impl Boveda {
         env.storage().instance().set(&Clave::Codigo, &codigo);
         Self::extender(&env);
         CodigoCambiado { admin }.publish(&env);
+    }
+
+    /// El admin pausa la bóveda (por ejemplo, si el código se filtró antes de tiempo): nadie
+    /// reclama mientras siga en pausa. Los depósitos siguen entrando.
+    pub fn pausar_boveda(env: Env) -> Result<(), Error> {
+        let admin = Self::admin(env.clone());
+        admin.require_auth();
+        if Self::en_pausa(env.clone()) {
+            return Err(Error::YaEnPausa);
+        }
+        env.storage().instance().set(&Clave::Pausa, &true);
+        Self::extender(&env);
+        BovedaPausada { admin }.publish(&env);
+        Ok(())
+    }
+
+    /// El admin quita la pausa y la bóveda se puede reclamar otra vez.
+    pub fn reanudar_boveda(env: Env) -> Result<(), Error> {
+        let admin = Self::admin(env.clone());
+        admin.require_auth();
+        if !Self::en_pausa(env.clone()) {
+            return Err(Error::NoEstaEnPausa);
+        }
+        env.storage().instance().remove(&Clave::Pausa);
+        Self::extender(&env);
+        BovedaReanudada { admin }.publish(&env);
+        Ok(())
+    }
+
+    /// ¿La bóveda está en pausa?
+    pub fn en_pausa(env: Env) -> bool {
+        env.storage().instance().get(&Clave::Pausa).unwrap_or(false)
     }
 
     fn extender(env: &Env) {

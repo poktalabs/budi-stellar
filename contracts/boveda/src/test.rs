@@ -125,3 +125,21 @@ fn cambiar_codigo_abre_con_el_nuevo_y_no_con_el_viejo() {
     );
     assert_eq!(c.b.reclamar(&quien, &codigo(&c.env, "Reto 2")), BONO);
 }
+
+#[test]
+fn en_pausa_nadie_reclama_y_al_reanudar_si() {
+    let c = caso();
+    c.b.depositar(&c.budi, &BONO);
+    let quien = Address::generate(&c.env);
+    c.b.pausar_boveda();
+    assert!(c.b.en_pausa());
+    assert_eq!(c.b.try_pausar_boveda(), Err(Ok(Error::YaEnPausa)));
+    assert_eq!(
+        c.b.try_reclamar(&quien, &codigo(&c.env, "Ship It")),
+        Err(Ok(Error::BovedaEnPausa))
+    );
+    c.b.reanudar_boveda();
+    assert!(!c.b.en_pausa());
+    assert_eq!(c.b.try_reanudar_boveda(), Err(Ok(Error::NoEstaEnPausa)));
+    assert_eq!(c.b.reclamar(&quien, &codigo(&c.env, "Ship It")), BONO);
+}

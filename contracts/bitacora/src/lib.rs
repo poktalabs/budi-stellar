@@ -53,6 +53,8 @@ pub enum Error {
     NoInscrito = 4,
     YaConfigurada = 5,
     HitoInexistente = 6,
+    SinHitoFijado = 7,
+    BitacoraVacia = 8,
 }
 
 #[contractevent]
@@ -90,6 +92,22 @@ pub struct HitoFijado {
     pub builder: Address,
     pub numero: u32,
     pub hito: String,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HitoDesfijado {
+    #[topic]
+    pub builder: Address,
+    pub numero: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BitacoraVaciada {
+    #[topic]
+    pub builder: Address,
+    pub borrados: u32,
 }
 
 #[contract]
@@ -234,6 +252,31 @@ impl Bitacora {
         env.storage().persistent().extend_ttl(&clave, TTL_UMBRAL, TTL_EXTENDER);
         HitoFijado { builder, numero, hito: hitos.get_unchecked(numero - 1) }.publish(&env);
         Ok(())
+    }
+
+    /// El builder quita el hito fijado; su bitácora vuelve a mostrarse en orden. Solo el
+    /// propio builder firma. Regresa el número que estaba fijado.
+    pub fn desfijar_hito(env: Env, builder: Address) -> Result<u32, Error> {
+        builder.require_auth();
+        let clave = Clave::Fijado(builder.clone());
+        let numero: u32 = env.storage().persistent().get(&clave).ok_or(Error::SinHitoFijado)?;
+        env.storage().persistent().remove(&clave);
+        HitoDesfijado { builder, numero }.publish(&env);
+        Ok(numero)
+    }
+
+    /// El builder borra toda su bitácora de una vez (y el hito fijado, si había) para empezar
+    /// de cero. Solo el propio builder firma. Regresa cuántos hitos se borraron.
+    pub fn vaciar_bitacora(env: Env, builder: Address) -> Result<u32, Error> {
+        builder.require_auth();
+        let borrados = Self::contar(env.clone(), builder.clone());
+        if borrados == 0 {
+            return Err(Error::BitacoraVacia);
+        }
+        env.storage().persistent().remove(&Clave::Hitos(builder.clone()));
+        env.storage().persistent().remove(&Clave::Fijado(builder.clone()));
+        BitacoraVaciada { builder, borrados }.publish(&env);
+        Ok(borrados)
     }
 
     /// El número del hito fijado de `builder`, si fijó uno.

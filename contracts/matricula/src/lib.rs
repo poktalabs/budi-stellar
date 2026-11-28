@@ -77,6 +77,8 @@ pub enum Error {
     MismoAlumno = 9,
     CursoCerrado = 10,
     PlazoInvalido = 11,
+    CursoAbierto = 12,
+    MismoAdmin = 13,
 }
 
 #[contractevent]
@@ -138,6 +140,20 @@ pub struct PlazoExtendido {
 pub struct InscripcionesCerradas {
     #[topic]
     pub curso: Symbol,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InscripcionesReabiertas {
+    #[topic]
+    pub curso: Symbol,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdminTransferido {
+    pub de: Address,
+    pub a: Address,
 }
 
 #[contract]
@@ -340,6 +356,36 @@ impl Matricula {
         env.storage().persistent().set(&clave, &true);
         env.storage().persistent().extend_ttl(&clave, TTL_UMBRAL, TTL_EXTENDER);
         InscripcionesCerradas { curso }.publish(&env);
+        Ok(())
+    }
+
+    /// Budi vuelve a abrir las inscripciones de un curso que había cerrado (por ejemplo, para
+    /// una cohorte nueva). Solo el admin.
+    pub fn reabrir_inscripciones(env: Env, curso: Symbol) -> Result<(), Error> {
+        Self::admin(env.clone()).require_auth();
+        Self::curso(env.clone(), curso.clone())?;
+        let clave = Clave::Cerrado(curso.clone());
+        if !env.storage().persistent().has(&clave) {
+            return Err(Error::CursoAbierto);
+        }
+        env.storage().persistent().remove(&clave);
+        InscripcionesReabiertas { curso }.publish(&env);
+        Ok(())
+    }
+
+    /// Pasa la administración del contrato a `nuevo` (por ejemplo, de la llave de despliegue a
+    /// la cuenta de custodia de Budi). Firman el admin actual y el nuevo, así nadie recibe la
+    /// administración por error ni a una dirección que no controla.
+    pub fn transferir_admin(env: Env, nuevo: Address) -> Result<(), Error> {
+        let de = Self::admin(env.clone());
+        de.require_auth();
+        nuevo.require_auth();
+        if de == nuevo {
+            return Err(Error::MismoAdmin);
+        }
+        env.storage().instance().set(&Clave::Admin, &nuevo);
+        env.storage().instance().extend_ttl(TTL_UMBRAL, TTL_EXTENDER);
+        AdminTransferido { de, a: nuevo }.publish(&env);
         Ok(())
     }
 

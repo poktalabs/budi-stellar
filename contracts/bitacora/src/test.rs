@@ -306,3 +306,33 @@ fn fijar_hito_y_borrar_lo_ajusta() {
     assert_eq!(client.fijado(&b), None);
     assert_eq!(client.try_fijar_hito(&b, &5), Err(Ok(Error::HitoInexistente)));
 }
+
+#[test]
+fn desfijar_y_vaciar_la_bitacora() {
+    let (env, client) = setup();
+    env.mock_all_auths();
+    let b = Address::generate(&env);
+    assert_eq!(client.try_desfijar_hito(&b), Err(Ok(Error::SinHitoFijado)));
+    assert_eq!(client.try_vaciar_bitacora(&b), Err(Ok(Error::BitacoraVacia)));
+    client.registrar(&b, &String::from_str(&env, "Uno"));
+    client.registrar(&b, &String::from_str(&env, "Dos"));
+    client.fijar_hito(&b, &2);
+    assert_eq!(client.desfijar_hito(&b), 2);
+    assert_eq!(client.fijado(&b), None);
+    client.fijar_hito(&b, &1);
+    assert_eq!(client.vaciar_bitacora(&b), 2);
+    assert_eq!(client.contar(&b), 0);
+    assert_eq!(client.fijado(&b), None);
+    assert_eq!(client.registrar(&b, &String::from_str(&env, "De nuevo")), 1);
+}
+
+#[test]
+#[should_panic]
+fn sin_firma_no_vacia() {
+    let (env, client) = setup();
+    let b = Address::generate(&env);
+    env.mock_all_auths();
+    client.registrar(&b, &String::from_str(&env, "Hito"));
+    env.set_auths(&[]);
+    client.vaciar_bitacora(&b);
+}
