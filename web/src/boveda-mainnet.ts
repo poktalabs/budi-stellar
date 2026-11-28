@@ -21,6 +21,8 @@ let cuenta = "";
 let contrato = "";
 let examen = "";
 let insignias = "";
+let bitacora = "";
+let ultimoHito = 0;
 
 function decir(id: string, html: string, error = false) {
   const el = $(id);
@@ -82,7 +84,7 @@ $("conectar").addEventListener("click", () =>
       }
       decir("out-wallet", `Conectada: <b>${corta(cuenta)}</b>.`);
       if (!contrato) return;
-      for (const id of ["paso-depositar", "paso-reclamar", "paso-registro", "paso-examen"]) $(id).classList.remove("off");
+      for (const id of ["paso-depositar", "paso-reclamar", "paso-registro", "paso-examen", "paso-bitacora"]) $(id).classList.remove("off");
       for (const el of document.querySelectorAll<HTMLInputElement | HTMLButtonElement>("main input, main button")) el.disabled = false;
       await pintarSaldo();
     } catch (e) {
@@ -193,13 +195,54 @@ $("ver-insignia").addEventListener("click", () =>
   }),
 );
 
+const ERRORES_BITACORA: Record<string, string> = {
+  "1": "Escribe tu hito primero.",
+  "2": "El hito es muy largo (máximo 140 caracteres).",
+  "3": "Tu Bitácora está llena.",
+  "6": "Ese hito no existe. Registra uno primero.",
+};
+const errorBitacora = (e: unknown) => {
+  const m = (e as Error).message;
+  const n = /Error\(Contract, #(\d+)\)/.exec(m)?.[1];
+  return (n && ERRORES_BITACORA[n]) || m;
+};
+
+$("registrar").addEventListener("click", () =>
+  ocupado($("registrar"), "Firma en Freighter…", async () => {
+    const hito = ($("hito") as HTMLInputElement).value.trim();
+    if (!hito) return decir("out-bitacora", "Escribe tu hito primero.", true);
+    try {
+      const hash = await escribir(cuenta, bitacora, "registrar", [yo(), nativeToScVal(hito, { type: "string" })]);
+      ultimoHito = Number(await resultado(hash));
+      decir("out-bitacora", `Registraste tu hito #${ultimoHito} en Stellar. ${enlace(hash)}`);
+    } catch (e) {
+      decir("out-bitacora", errorBitacora(e), true);
+    }
+  }),
+);
+
+$("corregir").addEventListener("click", () =>
+  ocupado($("corregir"), "Firma en Freighter…", async () => {
+    const hito = ($("hito-nuevo") as HTMLInputElement).value.trim();
+    if (!hito) return decir("out-bitacora", "Escribe el texto corregido.", true);
+    try {
+      if (!ultimoHito) ultimoHito = ((await leer(cuenta, bitacora, "contar", [yo()])) as number) ?? 0;
+      const hash = await escribir(cuenta, bitacora, "corregir", [yo(), nativeToScVal(ultimoHito, { type: "u32" }), nativeToScVal(hito, { type: "string" })]);
+      decir("out-bitacora", `Corregiste tu hito #${ultimoHito}: «${hito}». El texto de antes queda en el evento. ${enlace(hash)}`);
+    } catch (e) {
+      decir("out-bitacora", errorBitacora(e), true);
+    }
+  }),
+);
+
 try {
   const r = await fetch("/boveda/mainnet/contrato.json", { cache: "no-store" });
   if (r.ok) {
-    const j = (await r.json()) as { contrato?: string; examen?: string; insignias?: string };
+    const j = (await r.json()) as { contrato?: string; examen?: string; insignias?: string; bitacora?: string };
     contrato = j.contrato ?? "";
     examen = j.examen ?? "";
     insignias = j.insignias ?? "";
+    bitacora = j.bitacora ?? "";
   }
 } catch {
   /* sin archivo: aún no desplegada */

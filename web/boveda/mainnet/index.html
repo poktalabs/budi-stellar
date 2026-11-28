@@ -102,6 +102,22 @@
         <p class="out" id="out-examen"></p>
       </div>
     </li>
+    <li class="step off" id="paso-bitacora">
+      <div class="n">6</div>
+      <div class="body">
+        <h2>Registra tu hito y corrígelo</h2>
+        <p>Tu Bitácora guarda en Stellar lo que vas logrando, firmado por ti (<code>registrar</code>). Si algo quedó mal escrito, lo corriges y la corrección queda a la vista, con el texto de antes (<code>corregir</code>).</p>
+        <div class="row">
+          <input id="hito" value="Aprobé Soroban 101" maxlength="140" autocomplete="off" disabled>
+          <button class="btn primary" id="registrar" disabled>Registrar hito</button>
+        </div>
+        <div class="row">
+          <input id="hito-nuevo" value="Aprobé Soroban 101 y gané mi insignia" maxlength="140" autocomplete="off" disabled>
+          <button class="btn ghost" id="corregir" disabled>Corregir mi último hito</button>
+        </div>
+        <p class="out" id="out-bitacora"></p>
+      </div>
+    </li>
   </ol>
 
   <p class="hand">Corre en Stellar mainnet. <span id="contrato"></span>El contrato y este código están en <a href="https://github.com/poktalabs/budi-stellar">github.com/poktalabs/budi-stellar</a>.</p>
