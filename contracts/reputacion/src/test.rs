@@ -379,3 +379,59 @@ fn no_se_disputa_despues_de_la_revision_y_el_cliente_puede_retirar_la_disputa() 
         Err(Ok(Error::PlazoVencido))
     );
 }
+
+#[test]
+fn el_cliente_aumenta_la_custodia_antes_de_la_entrega() {
+    let (c, equipo) = con_equipo();
+    let t = c.r.contratar(&c.cliente, &equipo, &soroban(), &(20 * XLM), &DIA);
+    assert_eq!(c.r.aumentar(&t, &(10 * XLM)), 30 * XLM);
+    assert_eq!(c.token.balance(&c.r.address), 30 * XLM);
+    assert_eq!(c.r.try_aumentar(&t, &0), Err(Ok(Error::MontoInvalido)));
+    c.r.entregar(&t, &prueba(&c));
+    assert_eq!(c.r.try_aumentar(&t, &XLM), Err(Ok(Error::EstadoInvalido)));
+    // Al aceptar, el humano cobra el monto aumentado y suma por él (30 XLM / piso 10 = 3).
+    assert_eq!(c.r.aceptar(&t), 3);
+    assert_eq!(c.token.balance(&c.humano), 30 * XLM);
+}
+
+#[test]
+fn no_se_aumenta_despues_del_plazo() {
+    let (c, equipo) = con_equipo();
+    let t = c.r.contratar(&c.cliente, &equipo, &soroban(), &(20 * XLM), &DIA);
+    c.env.ledger().set_timestamp(1_000_000 + DIA);
+    assert_eq!(c.r.try_aumentar(&t, &XLM), Err(Ok(Error::PlazoVencido)));
+}
+
+#[test]
+fn el_equipo_declina_y_el_cliente_recupera_su_pago_al_momento() {
+    let (c, equipo) = con_equipo();
+    let antes = c.token.balance(&c.cliente);
+    let t = c.r.contratar(&c.cliente, &equipo, &soroban(), &(20 * XLM), &DIA);
+    c.r.declinar(&t);
+    assert_eq!(c.token.balance(&c.cliente), antes);
+    assert_eq!(c.r.trabajo(&t).estado, Estado::Reembolsado);
+    assert_eq!(c.r.puntaje(&equipo, &soroban()).puntos, 0);
+    assert_eq!(c.r.try_declinar(&t), Err(Ok(Error::EstadoInvalido)));
+}
+
+#[test]
+fn no_se_declina_lo_ya_entregado() {
+    let (c, equipo) = con_equipo();
+    let t = c.r.contratar(&c.cliente, &equipo, &soroban(), &(20 * XLM), &DIA);
+    c.r.entregar(&t, &prueba(&c));
+    assert_eq!(c.r.try_declinar(&t), Err(Ok(Error::EstadoInvalido)));
+}
+
+#[test]
+fn la_propina_va_al_humano_y_no_suma_puntos() {
+    let (c, equipo) = con_equipo();
+    let t = c.r.contratar(&c.cliente, &equipo, &soroban(), &(20 * XLM), &DIA);
+    assert_eq!(c.r.try_propina(&t, &XLM), Err(Ok(Error::EstadoInvalido)));
+    c.r.entregar(&t, &prueba(&c));
+    c.r.aceptar(&t);
+    let puntos = c.r.puntaje(&equipo, &soroban()).puntos;
+    c.r.propina(&t, &(5 * XLM));
+    assert_eq!(c.token.balance(&c.humano), 25 * XLM);
+    assert_eq!(c.r.puntaje(&equipo, &soroban()).puntos, puntos);
+    assert_eq!(c.r.try_propina(&t, &0), Err(Ok(Error::MontoInvalido)));
+}

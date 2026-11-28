@@ -256,6 +256,31 @@ pub struct PuntosAnulados {
     pub motivo: String,
 }
 
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Aumentado {
+    #[topic]
+    pub id: u32,
+    pub extra: i128,
+    pub monto: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Declinado {
+    #[topic]
+    pub id: u32,
+    pub monto: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Propina {
+    #[topic]
+    pub id: u32,
+    pub monto: i128,
+}
+
 #[contract]
 pub struct Reputacion;
 
@@ -535,6 +560,69 @@ impl Reputacion {
             monto: t.monto,
         }
         .publish(&env);
+        Ok(())
+    }
+
+    /// El cliente agrega `extra` al pago en custodia de un trabajo que todavía no se
+    /// entrega (creció el alcance). Firma el cliente. Regresa el monto nuevo.
+    pub fn aumentar(env: Env, trabajo: u32, extra: i128) -> Result<i128, Error> {
+        let mut t = Self::trabajo(env.clone(), trabajo)?;
+        t.cliente.require_auth();
+        if extra <= 0 {
+            return Err(Error::MontoInvalido);
+        }
+        if t.estado != Estado::EnCustodia {
+            return Err(Error::EstadoInvalido);
+        }
+        if env.ledger().timestamp() >= t.limite {
+            return Err(Error::PlazoVencido);
+        }
+        Self::token(&env).transfer(&t.cliente, env.current_contract_address(), &extra);
+        t.monto += extra;
+        Self::poner(&env, &Clave::Trabajo(trabajo), &t);
+        Aumentado {
+            id: trabajo,
+            extra,
+            monto: t.monto,
+        }
+        .publish(&env);
+        Ok(t.monto)
+    }
+
+    /// El equipo no puede tomar un trabajo: el humano lo declina antes de entregar y el
+    /// cliente recupera su pago en ese momento, sin esperar el plazo. Nadie suma.
+    pub fn declinar(env: Env, trabajo: u32) -> Result<(), Error> {
+        let mut t = Self::trabajo(env.clone(), trabajo)?;
+        Self::equipo(env.clone(), t.equipo)?.humano.require_auth();
+        if t.estado != Estado::EnCustodia {
+            return Err(Error::EstadoInvalido);
+        }
+        t.estado = Estado::Reembolsado;
+        Self::poner(&env, &Clave::Trabajo(trabajo), &t);
+        Self::token(&env).transfer(&env.current_contract_address(), &t.cliente, &t.monto);
+        Declinado {
+            id: trabajo,
+            monto: t.monto,
+        }
+        .publish(&env);
+        Ok(())
+    }
+
+    /// Después de pagar un trabajo, el cliente le deja una propina al humano del
+    /// equipo. Va directo al humano y no suma puntos: la reputación solo sale del
+    /// trabajo pagado. Firma el cliente.
+    pub fn propina(env: Env, trabajo: u32, monto: i128) -> Result<(), Error> {
+        let t = Self::trabajo(env.clone(), trabajo)?;
+        t.cliente.require_auth();
+        if monto <= 0 {
+            return Err(Error::MontoInvalido);
+        }
+        if t.estado != Estado::Pagado {
+            return Err(Error::EstadoInvalido);
+        }
+        let humano = Self::equipo(env.clone(), t.equipo)?.humano;
+        Self::token(&env).transfer(&t.cliente, &humano, &monto);
+        Propina { id: trabajo, monto }.publish(&env);
         Ok(())
     }
 
