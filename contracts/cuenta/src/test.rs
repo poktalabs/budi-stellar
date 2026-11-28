@@ -107,3 +107,20 @@ fn congelar_frena_al_operador_y_descongelar_lo_regresa() {
     assert_eq!(TokenClient::new(&c.env, &c.token).balance(&ana), 60);
     assert_eq!(c.cta.try_descongelar_cuenta(), Err(Ok(Error::NoCongelada)));
 }
+
+#[test]
+fn el_tope_diario_limita_la_suma_del_dia() {
+    let c = caso();
+    let llave = Address::generate(&c.env);
+    let ana = Address::generate(&c.env);
+    c.cta.fijar_operador(&llave, &c.token, &100);
+    assert_eq!(c.cta.try_quitar_tope_diario(), Err(Ok(Error::SinTopeDiario)));
+    c.cta.fijar_tope_diario(&150);
+    assert_eq!(c.cta.tope_diario(), Some(150));
+    c.cta.pago_operador(&ana, &100);
+    assert_eq!(c.cta.try_pago_operador(&ana, &60), Err(Ok(Error::ExcedeTopeDiario)));
+    c.cta.pago_operador(&ana, &50);
+    c.cta.quitar_tope_diario();
+    c.cta.pago_operador(&ana, &100);
+    assert_eq!(TokenClient::new(&c.env, &c.token).balance(&ana), 250);
+}

@@ -29,6 +29,7 @@ enum Clave {
     DelTitular(Address),
     PorRuta(Address, Symbol),
     UriBase,
+    Suspendida(u32),
 }
 
 #[contracttype]
@@ -50,6 +51,23 @@ pub enum Error {
     NoExiste = 2,
     YaRevocada = 3,
     DemasiadasInsignias = 4,
+    YaSuspendida = 5,
+    NoSuspendida = 6,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InsigniaSuspendida {
+    #[topic]
+    pub id: u32,
+    pub motivo: String,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InsigniaRestaurada {
+    #[topic]
+    pub id: u32,
 }
 
 #[contractevent]
@@ -201,6 +219,38 @@ impl Insignias {
     }
 
     /// La insignia con este id.
+    /// El emisor suspende una insignia de forma temporal (por ejemplo, mientras revisa
+    /// una denuncia). A diferencia de `revocar`, se puede restaurar: mientras tanto
+    /// `tiene` responde que no.
+    pub fn suspender_insignia(env: Env, id: u32, motivo: String) -> Result<(), Error> {
+        Self::emisor(env.clone()).require_auth();
+        let i = Self::insignia(env.clone(), id)?;
+        if i.revocada {
+            return Err(Error::YaRevocada);
+        }
+        if Self::suspendida(env.clone(), id) {
+            return Err(Error::YaSuspendida);
+        }
+        Self::guardar(&env, &Clave::Suspendida(id), &true);
+        InsigniaSuspendida { id, motivo }.publish(&env);
+        Ok(())
+    }
+
+    /// El emisor levanta la suspensión y la insignia vuelve a contar.
+    pub fn restaurar_insignia(env: Env, id: u32) -> Result<(), Error> {
+        Self::emisor(env.clone()).require_auth();
+        if !Self::suspendida(env.clone(), id) {
+            return Err(Error::NoSuspendida);
+        }
+        env.storage().persistent().remove(&Clave::Suspendida(id));
+        InsigniaRestaurada { id }.publish(&env);
+        Ok(())
+    }
+
+    pub fn suspendida(env: Env, id: u32) -> bool {
+        env.storage().persistent().get(&Clave::Suspendida(id)).unwrap_or(false)
+    }
+
     pub fn insignia(env: Env, id: u32) -> Result<Insignia, Error> {
         env.storage()
             .persistent()
@@ -251,7 +301,7 @@ impl Insignias {
             .persistent()
             .get(&Clave::PorRuta(titular, ruta));
         match id {
-            Some(id) => Self::insignia(env, id).is_ok_and(|i| !i.revocada),
+            Some(id) => !Self::suspendida(env.clone(), id) && Self::insignia(env, id).is_ok_and(|i| !i.revocada),
             None => false,
         }
     }

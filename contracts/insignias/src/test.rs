@@ -187,3 +187,19 @@ fn cambia_el_emisor_con_la_firma_de_los_dos() {
     assert!(firmas.contains(&emisor) && firmas.contains(&nuevo));
     assert_eq!(client.emisor(), nuevo);
 }
+
+#[test]
+fn suspender_y_restaurar_una_insignia() {
+    let (env, client, _) = setup();
+    env.mock_all_auths();
+    let ana = Address::generate(&env);
+    let ruta = symbol_short!("soroban1");
+    client.otorgar(&ana, &ruta);
+    let motivo = String::from_str(&env, "revision");
+    assert_eq!(client.try_restaurar_insignia(&1), Err(Ok(Error::NoSuspendida)));
+    client.suspender_insignia(&1, &motivo);
+    assert!(!client.tiene(&ana, &ruta));
+    assert_eq!(client.try_suspender_insignia(&1, &motivo), Err(Ok(Error::YaSuspendida)));
+    client.restaurar_insignia(&1);
+    assert!(client.tiene(&ana, &ruta));
+}

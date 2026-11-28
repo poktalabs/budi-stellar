@@ -181,3 +181,21 @@ fn solo_el_dueno_declara_habilidades() {
     env.set_auths(&[]);
     assert!(c.try_agregar_habilidad(&id, &symbol_short!("soroban")).is_err());
 }
+
+#[test]
+fn nombra_y_retira_operador_y_recibe_reportes() {
+    let (env, c, dueno) = caso();
+    let id = c.registrar_agente(&dueno, &s(&env, "uri"));
+    let op = Address::generate(&env);
+    assert_eq!(c.try_retirar_operador_agente(&id), Err(Ok(Error::SinOperador)));
+    c.nombrar_operador_agente(&id, &op);
+    assert_eq!(c.operador_agente(&id), Some(op.clone()));
+    assert_eq!(c.try_nombrar_operador_agente(&id, &dueno), Err(Ok(Error::MismoDueno)));
+    c.retirar_operador_agente(&id);
+    assert_eq!(c.operador_agente(&id), None);
+    let cliente = Address::generate(&env);
+    assert_eq!(c.reportar_agente(&id, &cliente, &s(&env, "no entrego")), 1);
+    assert_eq!(c.reportes(&id), 1);
+    assert_eq!(c.try_reportar_agente(&id, &dueno, &s(&env, "x")), Err(Ok(Error::AutoReporte)));
+    assert_eq!(c.try_reportar_agente(&id, &cliente, &s(&env, "")), Err(Ok(Error::MotivoVacio)));
+}

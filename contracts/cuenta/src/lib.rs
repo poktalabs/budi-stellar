@@ -17,6 +17,8 @@ enum Clave {
     Agente,
     Operador,
     Congelada,
+    TopeDiario,
+    GastadoHoy(u64),
 }
 
 /// La llave con la que el agente opera solo (su runtime), con un tope por pago.
@@ -42,6 +44,8 @@ pub enum Error {
     ExcedeTope = 3,
     Congelada = 4,
     NoCongelada = 5,
+    ExcedeTopeDiario = 6,
+    SinTopeDiario = 7,
 }
 
 #[contractevent]
@@ -120,6 +124,19 @@ pub struct PagoDelOperador {
     pub llave: Address,
     pub a: Address,
     pub monto: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TopeDiarioFijado {
+    pub por: Address,
+    pub tope: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TopeDiarioQuitado {
+    pub por: Address,
 }
 
 #[contractevent]
@@ -268,6 +285,15 @@ impl Cuenta {
         if monto > op.tope_por_pago {
             return Err(Error::ExcedeTope);
         }
+        if let Some(tope) = Self::tope_diario(env.clone()) {
+            let dia = env.ledger().timestamp() / 86_400;
+            let gastado: i128 = env.storage().temporary().get(&Clave::GastadoHoy(dia)).unwrap_or(0);
+            if gastado + monto > tope {
+                return Err(Error::ExcedeTopeDiario);
+            }
+            env.storage().temporary().set(&Clave::GastadoHoy(dia), &(gastado + monto));
+            env.storage().temporary().extend_ttl(&Clave::GastadoHoy(dia), 17_280, 34_560);
+        }
         token::Client::new(&env, &op.token).transfer(&env.current_contract_address(), &a, &monto);
         PagoDelOperador { llave: op.llave, a, monto }.publish(&env);
         Ok(())
@@ -297,6 +323,35 @@ impl Cuenta {
         env.storage().instance().remove(&Clave::Congelada);
         CuentaDescongelada { por: dueno }.publish(&env);
         Ok(())
+    }
+
+    /// El dueño fija cuánto puede gastar el operador en total por día (UTC), además
+    /// del tope por pago: muchos pagos chicos ya no vacían la cuenta.
+    pub fn fijar_tope_diario(env: Env, tope: i128) -> Result<(), Error> {
+        let dueno = Self::dueno(env.clone());
+        dueno.require_auth();
+        if tope <= 0 {
+            return Err(Error::MontoInvalido);
+        }
+        env.storage().instance().set(&Clave::TopeDiario, &tope);
+        TopeDiarioFijado { por: dueno, tope }.publish(&env);
+        Ok(())
+    }
+
+    /// El dueño quita el tope diario; queda solo el tope por pago.
+    pub fn quitar_tope_diario(env: Env) -> Result<(), Error> {
+        let dueno = Self::dueno(env.clone());
+        dueno.require_auth();
+        if Self::tope_diario(env.clone()).is_none() {
+            return Err(Error::SinTopeDiario);
+        }
+        env.storage().instance().remove(&Clave::TopeDiario);
+        TopeDiarioQuitado { por: dueno }.publish(&env);
+        Ok(())
+    }
+
+    pub fn tope_diario(env: Env) -> Option<i128> {
+        env.storage().instance().get(&Clave::TopeDiario)
     }
 
     pub fn congelada(env: Env) -> bool {

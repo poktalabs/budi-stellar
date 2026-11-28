@@ -63,6 +63,8 @@ enum Clave {
     Cuenta(u32),
     Pausado(u32),
     Habilidades(u32),
+    OperadorAgente(u32),
+    Reportes(u32),
 }
 
 #[contracterror]
@@ -84,6 +86,36 @@ pub enum Error {
     YaPausado = 13,
     YaTieneHabilidad = 14,
     SinHabilidad = 15,
+    SinOperador = 16,
+    MotivoVacio = 17,
+    AutoReporte = 18,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OperadorAgenteNombrado {
+    #[topic]
+    pub id: u32,
+    pub operador: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OperadorAgenteRetirado {
+    #[topic]
+    pub id: u32,
+    pub operador: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AgenteReportado {
+    #[topic]
+    pub id: u32,
+    #[topic]
+    pub quien: Address,
+    pub motivo: String,
+    pub reportes: u32,
 }
 
 #[contractevent]
@@ -461,6 +493,54 @@ impl Agentes {
         poner(&env, &Clave::Habilidades(id), &hs);
         HabilidadQuitada { id, habilidad }.publish(&env);
         Ok(())
+    }
+
+    /// El dueño nombra a un operador que administra el agente en el día a día
+    /// (por ejemplo, actualizar su ficha) sin poder transferirlo ni quemarlo.
+    pub fn nombrar_operador_agente(env: Env, id: u32, operador: Address) -> Result<(), Error> {
+        let a = Self::agente(env.clone(), id)?;
+        a.dueno.require_auth();
+        if operador == a.dueno {
+            return Err(Error::MismoDueno);
+        }
+        poner(&env, &Clave::OperadorAgente(id), &operador);
+        OperadorAgenteNombrado { id, operador }.publish(&env);
+        Ok(())
+    }
+
+    /// El dueño retira al operador del agente.
+    pub fn retirar_operador_agente(env: Env, id: u32) -> Result<(), Error> {
+        let a = Self::agente(env.clone(), id)?;
+        a.dueno.require_auth();
+        let operador = Self::operador_agente(env.clone(), id).ok_or(Error::SinOperador)?;
+        env.storage().persistent().remove(&Clave::OperadorAgente(id));
+        OperadorAgenteRetirado { id, operador }.publish(&env);
+        Ok(())
+    }
+
+    /// Cualquier persona reporta a un agente con un motivo (no al propio). El
+    /// conteo de reportes es público y sirve para revisar al agente.
+    pub fn reportar_agente(env: Env, id: u32, quien: Address, motivo: String) -> Result<u32, Error> {
+        quien.require_auth();
+        let a = Self::agente(env.clone(), id)?;
+        if quien == a.dueno {
+            return Err(Error::AutoReporte);
+        }
+        if motivo.is_empty() {
+            return Err(Error::MotivoVacio);
+        }
+        let reportes = Self::reportes(env.clone(), id) + 1;
+        poner(&env, &Clave::Reportes(id), &reportes);
+        AgenteReportado { id, quien, motivo, reportes }.publish(&env);
+        Ok(reportes)
+    }
+
+    pub fn operador_agente(env: Env, id: u32) -> Option<Address> {
+        env.storage().persistent().get(&Clave::OperadorAgente(id))
+    }
+
+    pub fn reportes(env: Env, id: u32) -> u32 {
+        env.storage().persistent().get(&Clave::Reportes(id)).unwrap_or(0)
     }
 
     pub fn habilidades(env: Env, id: u32) -> Vec<Symbol> {
