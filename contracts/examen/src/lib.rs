@@ -25,6 +25,7 @@ enum Clave {
     Aprobado(Address),
     Admin,
     Pausado,
+    Cierre,
 }
 
 /// Lo único que Examen le pide a Insignias.
@@ -40,6 +41,8 @@ pub enum Error {
     Incorrecto = 1,
     YaAprobo = 2,
     Pausado = 3,
+    Cerrado = 4,
+    MismoAdmin = 5,
 }
 
 #[contractevent]
@@ -66,6 +69,23 @@ pub struct ExamenActualizado {
     #[topic]
     pub ruta: Symbol,
     pub huella: BytesN<32>,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CierreFijado {
+    #[topic]
+    pub ruta: Symbol,
+    pub cierre: u64,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExamenCedido {
+    #[topic]
+    pub ruta: Symbol,
+    pub de: Address,
+    pub a: Address,
 }
 
 #[contract]
@@ -98,6 +118,10 @@ impl Examen {
         s.extend_ttl(TTL_UMBRAL, TTL_EXTENDER);
         if s.get(&Clave::Pausado).unwrap_or(false) {
             return Err(Error::Pausado);
+        }
+        let cierre: u64 = s.get(&Clave::Cierre).unwrap_or(0);
+        if cierre > 0 && env.ledger().timestamp() > cierre {
+            return Err(Error::Cerrado);
         }
         if env.storage().persistent().has(&Clave::Aprobado(alumno.clone())) {
             return Err(Error::YaAprobo);
@@ -138,6 +162,40 @@ impl Examen {
         s.extend_ttl(TTL_UMBRAL, TTL_EXTENDER);
         let ruta: Symbol = s.get(&Clave::Ruta).unwrap();
         ExamenActualizado { ruta, huella }.publish(&env);
+    }
+
+    /// El admin fija la fecha de cierre (segundos unix) de esta edición del examen: después
+    /// de esa fecha nadie presenta. 0 la quita.
+    pub fn fijar_cierre(env: Env, cierre: u64) {
+        let s = env.storage().instance();
+        let admin: Address = s.get(&Clave::Admin).unwrap();
+        admin.require_auth();
+        s.set(&Clave::Cierre, &cierre);
+        s.extend_ttl(TTL_UMBRAL, TTL_EXTENDER);
+        let ruta: Symbol = s.get(&Clave::Ruta).unwrap();
+        CierreFijado { ruta, cierre }.publish(&env);
+    }
+
+    /// El admin cede el examen a otra cuenta (por ejemplo, al mentor de la cohorte).
+    /// Firman los dos, para no cederlo a una cuenta que nadie controla.
+    pub fn ceder_examen(env: Env, nuevo: Address) -> Result<(), Error> {
+        let s = env.storage().instance();
+        let admin: Address = s.get(&Clave::Admin).unwrap();
+        admin.require_auth();
+        nuevo.require_auth();
+        if nuevo == admin {
+            return Err(Error::MismoAdmin);
+        }
+        s.set(&Clave::Admin, &nuevo);
+        s.extend_ttl(TTL_UMBRAL, TTL_EXTENDER);
+        let ruta: Symbol = s.get(&Clave::Ruta).unwrap();
+        ExamenCedido { ruta, de: admin, a: nuevo }.publish(&env);
+        Ok(())
+    }
+
+    /// La fecha de cierre (0 = sin cierre).
+    pub fn cierre(env: Env) -> u64 {
+        env.storage().instance().get(&Clave::Cierre).unwrap_or(0)
     }
 
     /// Si el examen está pausado.

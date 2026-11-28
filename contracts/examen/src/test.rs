@@ -120,3 +120,29 @@ fn sin_la_firma_del_admin_no_se_pausa() {
     let (_env, examen, _) = caso();
     examen.pausar_examen();
 }
+
+#[test]
+fn despues_del_cierre_nadie_presenta() {
+    use soroban_sdk::testutils::Ledger;
+    let (env, examen, _) = caso();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(1_000);
+    examen.fijar_cierre(&2_000);
+    assert_eq!(examen.cierre(), 2_000);
+    env.ledger().set_timestamp(2_001);
+    let ana = Address::generate(&env);
+    assert_eq!(examen.try_presentar(&ana, &resp(&env, CORRECTAS)), Err(Ok(Error::Cerrado)));
+    examen.fijar_cierre(&0);
+    assert_eq!(examen.presentar(&ana, &resp(&env, CORRECTAS)), 1);
+}
+
+#[test]
+fn el_admin_cede_el_examen_y_el_nuevo_admin_lo_pausa() {
+    let (env, examen, _) = caso();
+    env.mock_all_auths();
+    let mentor = Address::generate(&env);
+    examen.ceder_examen(&mentor);
+    examen.pausar_examen();
+    assert_eq!(env.auths()[0].0, mentor);
+    assert!(examen.pausado());
+}

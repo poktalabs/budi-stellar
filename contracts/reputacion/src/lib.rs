@@ -134,6 +134,8 @@ enum Clave {
     Registros(u32, Symbol),
     Pausado(u32),
     Retirada(Symbol),
+    Tarifa(u32, Symbol),
+    Resena(u32),
 }
 
 /// Lo único que Reputación le pregunta a Insignias.
@@ -166,6 +168,9 @@ pub enum Error {
     HabilidadRetirada = 18,
     MismoAdmin = 19,
     SinPuntos = 20,
+    TextoVacio = 21,
+    ResenaYaExiste = 22,
+    SinResena = 23,
 }
 
 #[contractevent]
@@ -361,6 +366,43 @@ pub struct CanceladoDeComunAcuerdo {
     #[topic]
     pub id: u32,
     pub monto: i128,
+}
+
+/// La reseña pública que deja un cliente que pagó un trabajo.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Resena {
+    pub cliente: Address,
+    pub equipo: u32,
+    pub texto: String,
+    pub oculta: bool,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TarifaFijada {
+    #[topic]
+    pub equipo: u32,
+    #[topic]
+    pub habilidad: Symbol,
+    pub tarifa: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResenaPublicada {
+    #[topic]
+    pub equipo: u32,
+    pub trabajo: u32,
+    pub cliente: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResenaOculta {
+    #[topic]
+    pub trabajo: u32,
+    pub motivo: String,
 }
 
 #[contract]
@@ -989,6 +1031,65 @@ impl Reputacion {
             trabajos,
             por_evaluacion,
         }
+    }
+
+    /// El humano publica la tarifa de su equipo en una habilidad (en la unidad mínima del
+    /// token), para que un cliente sepa cuánto cuesta antes de contratar. 0 la quita.
+    pub fn fijar_tarifa(env: Env, equipo: u32, habilidad: Symbol, tarifa: i128) -> Result<(), Error> {
+        let e = Self::equipo(env.clone(), equipo)?;
+        e.humano.require_auth();
+        if !e.activo {
+            return Err(Error::EquipoRetirado);
+        }
+        Self::habilidad(env.clone(), habilidad.clone())?;
+        if tarifa < 0 {
+            return Err(Error::MontoInvalido);
+        }
+        Self::poner(&env, &Clave::Tarifa(equipo, habilidad.clone()), &tarifa);
+        TarifaFijada { equipo, habilidad, tarifa }.publish(&env);
+        Ok(())
+    }
+
+    /// El cliente de un trabajo pagado publica una reseña del equipo. Solo quien pagó
+    /// trabajo entregado opina, y una sola vez por trabajo.
+    pub fn publicar_resena(env: Env, trabajo: u32, texto: String) -> Result<(), Error> {
+        let t = Self::trabajo(env.clone(), trabajo)?;
+        t.cliente.require_auth();
+        if t.estado != Estado::Pagado {
+            return Err(Error::EstadoInvalido);
+        }
+        if texto.is_empty() {
+            return Err(Error::TextoVacio);
+        }
+        if env.storage().persistent().has(&Clave::Resena(trabajo)) {
+            return Err(Error::ResenaYaExiste);
+        }
+        let r = Resena { cliente: t.cliente.clone(), equipo: t.equipo, texto, oculta: false };
+        Self::poner(&env, &Clave::Resena(trabajo), &r);
+        ResenaPublicada { equipo: t.equipo, trabajo, cliente: t.cliente }.publish(&env);
+        Ok(())
+    }
+
+    /// Budi oculta una reseña que rompe las reglas (datos personales, insultos), con un
+    /// motivo público. La reseña sigue guardada, marcada como oculta. Solo el admin.
+    pub fn ocultar_resena(env: Env, trabajo: u32, motivo: String) -> Result<(), Error> {
+        Self::admin(env.clone()).require_auth();
+        if motivo.is_empty() {
+            return Err(Error::MotivoVacio);
+        }
+        let mut r: Resena = env.storage().persistent().get(&Clave::Resena(trabajo)).ok_or(Error::SinResena)?;
+        r.oculta = true;
+        Self::poner(&env, &Clave::Resena(trabajo), &r);
+        ResenaOculta { trabajo, motivo }.publish(&env);
+        Ok(())
+    }
+
+    pub fn tarifa(env: Env, equipo: u32, habilidad: Symbol) -> i128 {
+        env.storage().persistent().get(&Clave::Tarifa(equipo, habilidad)).unwrap_or(0)
+    }
+
+    pub fn resena(env: Env, trabajo: u32) -> Option<Resena> {
+        env.storage().persistent().get(&Clave::Resena(trabajo))
     }
 
     pub fn equipo(env: Env, id: u32) -> Result<Equipo, Error> {

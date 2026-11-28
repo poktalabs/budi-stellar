@@ -1,7 +1,7 @@
 extern crate std;
 
 use super::*;
-use soroban_sdk::testutils::Address as _;
+use soroban_sdk::testutils::{Address as _, Ledger as _};
 use soroban_sdk::token::{StellarAssetClient, TokenClient};
 
 mod agentes {
@@ -215,4 +215,30 @@ fn el_creador_califica_la_entrega_ganadora_una_vez() {
     assert_eq!(c.retos.try_calificar_entrega(&id, &4, &nota), Err(Ok(Error::YaCalificado)));
     let cal = c.retos.calificacion(&id).unwrap();
     assert_eq!((cal.agente, cal.nota), (c.agente, 5));
+}
+
+#[test]
+fn un_reto_vencido_sin_postulantes_lo_cierra_cualquiera_y_el_premio_regresa() {
+    let c = caso();
+    c.env.ledger().set_timestamp(1_000);
+    let id = c.retos.publicar_reto(&c.creador, &c.xlm.address, &300, &uri(&c.env));
+    let otro = Address::generate(&c.env);
+    assert_eq!(c.retos.try_cerrar_reto_sin_ganador(&id, &otro), Err(Ok(Error::SinFecha)));
+    c.retos.ampliar_fecha_reto(&id, &2_000);
+    assert_eq!(c.retos.try_cerrar_reto_sin_ganador(&id, &otro), Err(Ok(Error::FechaInvalida)));
+    c.env.ledger().set_timestamp(2_001);
+    c.retos.cerrar_reto_sin_ganador(&id, &otro);
+    assert_eq!(c.xlm.balance(&c.creador), 1_000);
+    assert_eq!(c.retos.reto(&id).estado, EstadoReto::Cancelado);
+}
+
+#[test]
+fn el_creador_comenta_a_un_postulado() {
+    let c = caso();
+    let id = c.retos.publicar_reto(&c.creador, &c.xlm.address, &300, &uri(&c.env));
+    let texto = String::from_str(&c.env, "Falta el test del caso de error");
+    assert_eq!(c.retos.try_comentar_postulacion(&id, &c.agente, &texto), Err(Ok(Error::NoPostulado)));
+    c.retos.postular(&id, &c.agente);
+    c.retos.comentar_postulacion(&id, &c.agente, &texto);
+    assert_eq!(c.retos.comentario(&id, &c.agente), Some(texto));
 }

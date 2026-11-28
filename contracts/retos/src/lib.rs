@@ -45,6 +45,7 @@ enum Clave {
     Invitados(u32),
     Fecha(u32),
     Nota(u32),
+    Comentario(u32, u32),
 }
 
 /// La calificación que deja el creador sobre la entrega ganadora.
@@ -87,6 +88,8 @@ pub enum Error {
     NoPagado = 15,
     YaCalificado = 16,
     YaInvitado = 17,
+    SinFecha = 18,
+    ComentarioVacio = 19,
 }
 
 #[contractevent]
@@ -199,6 +202,24 @@ pub struct RetoTraspasado {
     pub reto: u32,
     pub de: Address,
     pub a: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RetoCerradoSinGanador {
+    #[topic]
+    pub reto: u32,
+    pub quien: Address,
+    pub premio: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PostulacionComentada {
+    #[topic]
+    pub reto: u32,
+    pub agente: u32,
+    pub comentario: String,
 }
 
 #[contract]
@@ -486,6 +507,49 @@ impl Retos {
         guardar(&env, &Clave::Nota(reto), &Calificacion { agente: r.ganador, nota, comentario });
         EntregaCalificada { reto, agente: r.ganador, nota }.publish(&env);
         Ok(())
+    }
+
+    /// Cierra un reto vencido al que nadie se postuló y le regresa el premio al creador.
+    /// Lo puede llamar cualquiera (firma quien llama): así el premio no queda atorado si el
+    /// creador se olvida del reto.
+    pub fn cerrar_reto_sin_ganador(env: Env, reto: u32, quien: Address) -> Result<(), Error> {
+        quien.require_auth();
+        let mut r = Self::reto(env.clone(), reto)?;
+        if r.estado != EstadoReto::Abierto {
+            return Err(Error::RetoCerrado);
+        }
+        let fecha: u64 = env.storage().persistent().get(&Clave::Fecha(reto)).ok_or(Error::SinFecha)?;
+        if env.ledger().timestamp() <= fecha {
+            return Err(Error::FechaInvalida);
+        }
+        if !r.postulantes.is_empty() {
+            return Err(Error::TienePostulantes);
+        }
+        r.estado = EstadoReto::Cancelado;
+        poner(&env, reto, &r);
+        token::Client::new(&env, &r.token).transfer(&env.current_contract_address(), &r.creador, &r.premio);
+        RetoCerradoSinGanador { reto, quien, premio: r.premio }.publish(&env);
+        Ok(())
+    }
+
+    /// El creador deja un comentario público a un agente postulado (qué le falta, qué le
+    /// gustó), para que mejore su entrega antes de elegir ganador.
+    pub fn comentar_postulacion(env: Env, reto: u32, agente: u32, comentario: String) -> Result<(), Error> {
+        let r = Self::reto(env.clone(), reto)?;
+        r.creador.require_auth();
+        if !r.postulantes.contains(agente) {
+            return Err(Error::NoPostulado);
+        }
+        if comentario.is_empty() {
+            return Err(Error::ComentarioVacio);
+        }
+        guardar(&env, &Clave::Comentario(reto, agente), &comentario);
+        PostulacionComentada { reto, agente, comentario }.publish(&env);
+        Ok(())
+    }
+
+    pub fn comentario(env: Env, reto: u32, agente: u32) -> Option<String> {
+        env.storage().persistent().get(&Clave::Comentario(reto, agente))
     }
 
     pub fn invitados(env: Env, reto: u32) -> Vec<u32> {

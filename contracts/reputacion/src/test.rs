@@ -586,3 +586,26 @@ fn renovar_el_puntaje_alarga_la_vigencia_de_los_registros() {
     c.env.ledger().with_mut(|l| l.timestamp += 300 * DIA);
     assert_eq!(c.r.puntaje(&equipo, &soroban()).puntos, 2);
 }
+
+#[test]
+fn el_equipo_publica_su_tarifa_y_el_cliente_que_pago_deja_una_resena_que_budi_puede_ocultar() {
+    let (c, equipo) = con_equipo();
+    c.r.fijar_tarifa(&equipo, &soroban(), &(25 * XLM));
+    assert_eq!(c.r.tarifa(&equipo, &soroban()), 25 * XLM);
+    assert_eq!(c.r.try_fijar_tarifa(&equipo, &soroban(), &-1), Err(Ok(Error::MontoInvalido)));
+
+    let t = c.r.contratar(&c.cliente, &equipo, &soroban(), &(30 * XLM), &(7 * DIA));
+    let texto = String::from_str(&c.env, "Entregaron a tiempo y explicaron todo");
+    // Sin pagar no hay reseña.
+    assert_eq!(c.r.try_publicar_resena(&t, &texto), Err(Ok(Error::EstadoInvalido)));
+    c.r.entregar(&t, &prueba(&c));
+    c.r.aceptar(&t);
+    c.r.publicar_resena(&t, &texto);
+    assert_eq!(c.r.try_publicar_resena(&t, &texto), Err(Ok(Error::ResenaYaExiste)));
+    let r = c.r.resena(&t).unwrap();
+    assert_eq!((r.cliente.clone(), r.equipo, r.oculta), (c.cliente.clone(), equipo, false));
+
+    c.r.ocultar_resena(&t, &motivo(&c, "datos personales"));
+    assert!(c.r.resena(&t).unwrap().oculta);
+    assert_eq!(c.r.try_ocultar_resena(&99, &motivo(&c, "x")), Err(Ok(Error::SinResena)));
+}
