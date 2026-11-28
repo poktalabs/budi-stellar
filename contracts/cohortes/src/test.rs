@@ -104,3 +104,60 @@ fn sin_firma_del_mentor_no_pasa_lista() {
     env.set_auths(&[]);
     assert!(c.try_marcar_asistencia(&id, &a, &1).is_err());
 }
+
+fn err(e: Error) -> soroban_sdk::Error {
+    soroban_sdk::Error::from_contract_error(e as u32)
+}
+
+#[test]
+fn cerrar_cohorte_bloquea_nuevos_alumnos() {
+    let (env, c, _m, _a, id) = preparar();
+    c.cerrar_cohorte(&id);
+    let otro = Address::generate(&env);
+    assert_eq!(c.try_unirse_a_cohorte(&id, &otro), Err(Ok(err(Error::Cerrada))));
+    assert_eq!(c.try_cerrar_cohorte(&id), Err(Ok(err(Error::Cerrada))));
+}
+
+#[test]
+fn agregar_sesion_y_justificar_falta() {
+    let (_env, c, _m, alumno, id) = preparar();
+    assert_eq!(c.agregar_sesion(&id), 5);
+    c.justificar_falta(&id, &alumno, &5);
+    assert_eq!(c.progreso(&id, &alumno).asistencias, 1);
+    assert_eq!(c.try_marcar_asistencia(&id, &alumno, &5), Err(Ok(err(Error::YaAsistio))));
+}
+
+#[test]
+fn reabrir_tarea_resta_la_aprobada() {
+    let (env, c, _m, alumno, id) = preparar();
+    c.entregar_tarea(&id, &alumno, &1, &String::from_str(&env, "https://x"));
+    assert_eq!(c.try_reabrir_tarea(&id, &alumno, &1), Err(Ok(err(Error::NoAprobada))));
+    c.calificar_tarea(&id, &alumno, &1, &true);
+    c.reabrir_tarea(&id, &alumno, &1);
+    assert_eq!(c.progreso(&id, &alumno).tareas_aprobadas, 0);
+    c.entregar_tarea(&id, &alumno, &1, &String::from_str(&env, "https://x2"));
+}
+
+#[test]
+fn expulsar_renombrar_y_cambiar_requisitos() {
+    let (env, c, _m, alumno, id) = preparar();
+    c.renombrar_cohorte(&id, &String::from_str(&env, "Generacion Uno"));
+    assert_eq!(c.cohorte(&id).nombre, String::from_str(&env, "Generacion Uno"));
+    c.cambiar_requisitos(&id, &1, &0);
+    assert_eq!(c.cohorte(&id).asistencia_minima, 1);
+    assert_eq!(c.try_cambiar_requisitos(&id, &9, &0), Err(Ok(err(Error::ConfigInvalida))));
+    c.expulsar_de_cohorte(&id, &alumno);
+    assert_eq!(c.cohorte(&id).alumnos, 0);
+}
+
+#[test]
+#[should_panic]
+fn solo_el_mentor_cierra() {
+    let env = Env::default();
+    let c = CohortesClient::new(&env, &env.register(Cohortes, ()));
+    let m = Address::generate(&env);
+    env.mock_all_auths();
+    let id = c.abrir_cohorte(&m, &String::from_str(&env, "x"), &2, &1, &0);
+    env.set_auths(&[]);
+    c.cerrar_cohorte(&id);
+}

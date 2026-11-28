@@ -20,6 +20,7 @@ enum Clave {
     Alumno(u32, Address),
     Asistio(u32, Address, u32),
     Tarea(u32, Address, u32),
+    Cerrada(u32),
 }
 
 #[contracttype]
@@ -63,6 +64,8 @@ pub enum Error {
     YaGraduado = 8,
     ConfigInvalida = 9,
     YaAprobada = 10,
+    Cerrada = 11,
+    NoAprobada = 12,
 }
 
 #[contractevent]
@@ -140,6 +143,67 @@ pub struct AlumnoGraduado {
     pub id: u32,
     #[topic]
     pub alumno: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CohorteCerrada {
+    #[topic]
+    pub id: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SesionAgregada {
+    #[topic]
+    pub id: u32,
+    pub sesiones: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FaltaJustificada {
+    #[topic]
+    pub id: u32,
+    #[topic]
+    pub alumno: Address,
+    pub sesion: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TareaReabierta {
+    #[topic]
+    pub id: u32,
+    #[topic]
+    pub alumno: Address,
+    pub tarea: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AlumnoExpulsado {
+    #[topic]
+    pub id: u32,
+    #[topic]
+    pub alumno: Address,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CohorteRenombrada {
+    #[topic]
+    pub id: u32,
+    pub nombre: String,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RequisitosCambiados {
+    #[topic]
+    pub id: u32,
+    pub asistencia_minima: u32,
+    pub tareas_minimas: u32,
 }
 
 #[contract]
@@ -224,6 +288,9 @@ impl Cohortes {
     pub fn unirse_a_cohorte(env: Env, id: u32, alumno: Address) {
         alumno.require_auth();
         let mut c = leer(&env, id);
+        if env.storage().persistent().has(&Clave::Cerrada(id)) {
+            panic_with_error!(&env, Error::Cerrada);
+        }
         if env.storage().persistent().has(&Clave::Alumno(id, alumno.clone())) {
             panic_with_error!(&env, Error::YaInscrito);
         }
@@ -325,6 +392,109 @@ impl Cohortes {
         p.graduado = true;
         guardar_progreso(&env, id, &alumno, &p);
         AlumnoGraduado { id, alumno }.publish(&env);
+    }
+
+    /// El mentor cierra la cohorte: nadie nuevo puede unirse; los inscritos siguen y se gradúan.
+    pub fn cerrar_cohorte(env: Env, id: u32) {
+        let c = leer(&env, id);
+        c.mentor.require_auth();
+        let k = Clave::Cerrada(id);
+        if env.storage().persistent().has(&k) {
+            panic_with_error!(&env, Error::Cerrada);
+        }
+        env.storage().persistent().set(&k, &true);
+        env.storage().persistent().extend_ttl(&k, TTL_UMBRAL, TTL_EXTENDER);
+        CohorteCerrada { id }.publish(&env);
+    }
+
+    /// El mentor agrega una sesión más al calendario de la cohorte.
+    pub fn agregar_sesion(env: Env, id: u32) -> u32 {
+        let mut c = leer(&env, id);
+        c.mentor.require_auth();
+        c.sesiones += 1;
+        guardar(&env, id, &c);
+        SesionAgregada { id, sesiones: c.sesiones }.publish(&env);
+        c.sesiones
+    }
+
+    /// El mentor justifica una falta: la sesión cuenta como asistencia.
+    pub fn justificar_falta(env: Env, id: u32, alumno: Address, sesion: u32) {
+        let c = leer(&env, id);
+        c.mentor.require_auth();
+        if sesion == 0 || sesion > c.sesiones {
+            panic_with_error!(&env, Error::SesionInvalida);
+        }
+        let mut p = progreso_de(&env, id, &alumno);
+        let k = Clave::Asistio(id, alumno.clone(), sesion);
+        if env.storage().persistent().has(&k) {
+            panic_with_error!(&env, Error::YaAsistio);
+        }
+        env.storage().persistent().set(&k, &false);
+        env.storage().persistent().extend_ttl(&k, TTL_UMBRAL, TTL_EXTENDER);
+        p.asistencias += 1;
+        guardar_progreso(&env, id, &alumno, &p);
+        FaltaJustificada { id, alumno, sesion }.publish(&env);
+    }
+
+    /// El mentor reabre una tarea aprobada para que el alumno la rehaga (antes de graduarse).
+    pub fn reabrir_tarea(env: Env, id: u32, alumno: Address, tarea: u32) {
+        let c = leer(&env, id);
+        c.mentor.require_auth();
+        let mut p = progreso_de(&env, id, &alumno);
+        if p.graduado {
+            panic_with_error!(&env, Error::YaGraduado);
+        }
+        let k = Clave::Tarea(id, alumno.clone(), tarea);
+        let mut t: Tarea = env
+            .storage()
+            .persistent()
+            .get(&k)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::SinTarea));
+        if t.estado != 1 {
+            panic_with_error!(&env, Error::NoAprobada);
+        }
+        t.estado = 2;
+        env.storage().persistent().set(&k, &t);
+        env.storage().persistent().extend_ttl(&k, TTL_UMBRAL, TTL_EXTENDER);
+        p.tareas_aprobadas -= 1;
+        guardar_progreso(&env, id, &alumno, &p);
+        TareaReabierta { id, alumno, tarea }.publish(&env);
+    }
+
+    /// El mentor saca a un alumno no graduado de la cohorte.
+    pub fn expulsar_de_cohorte(env: Env, id: u32, alumno: Address) {
+        let mut c = leer(&env, id);
+        c.mentor.require_auth();
+        let p = progreso_de(&env, id, &alumno);
+        if p.graduado {
+            panic_with_error!(&env, Error::YaGraduado);
+        }
+        env.storage().persistent().remove(&Clave::Alumno(id, alumno.clone()));
+        c.alumnos -= 1;
+        guardar(&env, id, &c);
+        AlumnoExpulsado { id, alumno }.publish(&env);
+    }
+
+    /// El mentor cambia el nombre de la cohorte.
+    pub fn renombrar_cohorte(env: Env, id: u32, nombre: String) {
+        let mut c = leer(&env, id);
+        c.mentor.require_auth();
+        c.nombre = nombre.clone();
+        guardar(&env, id, &c);
+        CohorteRenombrada { id, nombre }.publish(&env);
+    }
+
+    /// El mentor ajusta lo que pide la cohorte para graduarse.
+    pub fn cambiar_requisitos(env: Env, id: u32, asistencia_minima: u32, tareas_minimas: u32) {
+        let mut c = leer(&env, id);
+        c.mentor.require_auth();
+        if asistencia_minima > c.sesiones {
+            panic_with_error!(&env, Error::ConfigInvalida);
+        }
+        c.asistencia_minima = asistencia_minima;
+        c.tareas_minimas = tareas_minimas;
+        guardar(&env, id, &c);
+        RequisitosCambiados { id, asistencia_minima, tareas_minimas }.publish(&env);
     }
 
     pub fn cohorte(env: Env, id: u32) -> Cohorte {
