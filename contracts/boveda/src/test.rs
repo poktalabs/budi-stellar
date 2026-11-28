@@ -100,3 +100,14 @@ fn deposito_invalido() {
     let c = caso();
     assert_eq!(c.b.try_depositar(&c.budi, &0), Err(Ok(Error::MontoInvalido)));
 }
+
+#[test]
+fn cerrar_regresa_el_saldo_al_admin() {
+    let c = caso();
+    c.b.depositar(&c.budi, &BONO);
+    assert_eq!(c.b.cerrar(), BONO);
+    assert_eq!(c.b.saldo(), 0);
+    assert_eq!(c.token.balance(&c.budi), BONO * 3);
+    assert_eq!(c.b.try_cerrar(), Err(Ok(Error::BovedaVacia)));
+    let _ = &c.env;
+}

@@ -260,3 +260,31 @@ mod con_matricula {
         );
     }
 }
+
+#[test]
+fn borra_un_hito_y_los_siguientes_recorren_su_numero() {
+    let (env, client) = setup();
+    env.mock_all_auths();
+    let builder = Address::generate(&env);
+    for h in ["uno", "dos", "tres"] {
+        client.registrar(&builder, &String::from_str(&env, h));
+    }
+    client.borrar(&builder, &2);
+    assert_eq!(
+        client.hitos(&builder),
+        vec![&env, String::from_str(&env, "uno"), String::from_str(&env, "tres")]
+    );
+    assert_eq!(client.try_borrar(&builder, &3), Err(Ok(Error::HitoInexistente)));
+    assert_eq!(client.try_borrar(&builder, &0), Err(Ok(Error::HitoInexistente)));
+}
+
+#[test]
+#[should_panic]
+fn sin_firma_no_borra() {
+    let (env, client) = setup();
+    let builder = Address::generate(&env);
+    env.mock_all_auths();
+    client.registrar(&builder, &String::from_str(&env, "Hito"));
+    env.set_auths(&[]);
+    client.borrar(&builder, &1);
+}

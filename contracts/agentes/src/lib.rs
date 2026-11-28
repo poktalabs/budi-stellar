@@ -144,6 +144,14 @@ pub struct ValidacionRespondida {
     pub respuesta: u32,
 }
 
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AgenteQuemado {
+    #[topic]
+    pub id: u32,
+    pub dueno: Address,
+}
+
 #[contract]
 pub struct Agentes;
 
@@ -279,6 +287,16 @@ impl Agentes {
         v.respuesta = Some(respuesta);
         poner(&env, &Clave::Validacion(trabajo.clone()), &v);
         ValidacionRespondida { agente: v.agente, trabajo, respuesta }.publish(&env);
+        Ok(())
+    }
+
+    /// El dueño da de baja al agente para siempre. Su identidad desaparece (el id no se
+    /// reusa); sus calificaciones quedan como historial y ya no recibe nuevas.
+    pub fn quemar_agente(env: Env, id: u32) -> Result<(), Error> {
+        let a = Self::agente(env.clone(), id)?;
+        a.dueno.require_auth();
+        env.storage().persistent().remove(&Clave::Agente(id));
+        AgenteQuemado { id, dueno: a.dueno }.publish(&env);
         Ok(())
     }
 

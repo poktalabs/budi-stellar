@@ -89,3 +89,16 @@ fn solo_el_validador_pedido_responde() {
     assert_eq!(v.respuesta, Some(85));
     assert_eq!(c.try_responder_validacion(&BytesN::from_array(&env, &[1; 32]), &1), Err(Ok(Error::ValidacionNoExiste)));
 }
+
+#[test]
+fn quemar_un_agente_lo_da_de_baja() {
+    let (env, c, dueno) = caso();
+    let id = c.registrar_agente(&dueno, &s(&env, "uri"));
+    let ana = Address::generate(&env);
+    c.dar_feedback(&ana, &id, &90, &symbol_short!("codigo"), &s(&env, "pr/1"));
+    c.quemar_agente(&id);
+    assert_eq!(c.try_agente(&id), Err(Ok(Error::AgenteNoExiste)));
+    assert_eq!(c.try_dar_feedback(&ana, &id, &90, &symbol_short!("x"), &s(&env, "u")), Err(Ok(Error::AgenteNoExiste)));
+    assert_eq!(c.feedback(&id, &0).puntaje, 90);
+    assert_eq!(c.registrar_agente(&dueno, &s(&env, "uri")), id + 1);
+}

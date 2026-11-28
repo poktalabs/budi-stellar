@@ -72,6 +72,15 @@ pub struct HitoCorregido {
     pub ahora: String,
 }
 
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HitoBorrado {
+    #[topic]
+    pub builder: Address,
+    pub numero: u32,
+    pub hito: String,
+}
+
 #[contract]
 pub struct Bitacora;
 
@@ -173,6 +182,23 @@ impl Bitacora {
             ahora: hito,
         }
         .publish(&env);
+        Ok(())
+    }
+
+    /// Borra el hito `numero` de `builder`; los siguientes recorren su número. Solo el
+    /// propio builder firma, y el evento guarda el texto borrado.
+    pub fn borrar(env: Env, builder: Address, numero: u32) -> Result<(), Error> {
+        builder.require_auth();
+        let clave = Clave::Hitos(builder.clone());
+        let mut hitos: Vec<String> = env.storage().persistent().get(&clave).unwrap_or(Vec::new(&env));
+        if numero == 0 || numero > hitos.len() {
+            return Err(Error::HitoInexistente);
+        }
+        let hito = hitos.get_unchecked(numero - 1);
+        hitos.remove(numero - 1);
+        env.storage().persistent().set(&clave, &hitos);
+        env.storage().persistent().extend_ttl(&clave, TTL_UMBRAL, TTL_EXTENDER);
+        HitoBorrado { builder, numero, hito }.publish(&env);
         Ok(())
     }
 

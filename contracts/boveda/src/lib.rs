@@ -48,6 +48,14 @@ pub struct Reclamado {
     pub monto: i128,
 }
 
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Cerrada {
+    #[topic]
+    pub admin: Address,
+    pub monto: i128,
+}
+
 #[contract]
 pub struct Boveda;
 
@@ -115,6 +123,20 @@ impl Boveda {
     fn token(env: &Env) -> token::Client<'_> {
         let id: Address = env.storage().instance().get(&Clave::Token).unwrap();
         token::Client::new(env, &id)
+    }
+
+    /// El admin cierra la bóveda: recupera todo lo que quede y ya nadie la abre.
+    /// Regresa lo recuperado.
+    pub fn cerrar(env: Env) -> Result<i128, Error> {
+        let admin = Self::admin(env.clone());
+        admin.require_auth();
+        let monto = Self::saldo(env.clone());
+        if monto <= 0 {
+            return Err(Error::BovedaVacia);
+        }
+        Self::token(&env).transfer(&env.current_contract_address(), &admin, &monto);
+        Cerrada { admin, monto }.publish(&env);
+        Ok(monto)
     }
 
     fn extender(env: &Env) {
